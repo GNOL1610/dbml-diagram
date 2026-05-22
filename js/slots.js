@@ -149,6 +149,23 @@ function _payload() {
 }
 function _genId()  { return Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
 function _nowISO() { return new Date().toISOString(); }
+
+// Convert slot name → safe filename:  "Phiên 22/05" → "Phiên_22-05_diagram.json"
+function _nameToFile(name) {
+  const safe = name
+    .replace(/[/\\:*?"<>|]/g, '-')
+    .replace(/\s+/g, '_')
+    .replace(/-{2,}/g, '-')
+    .replace(/_{2,}/g, '_')
+    .replace(/^[_.\-]+|[_.\-]+$/g, '')
+    .slice(0, 60) || 'phien';
+  return safe + '_diagram.json';
+}
+
+// Get the filename for a slot entry (with fallback for old slots)
+function _entryFile(entry) {
+  return entry.filename || `slot_${entry.id}.json`;
+}
 function _fmtDate(iso) {
   try {
     const d = new Date(iso);
@@ -292,25 +309,26 @@ async function saveCurrentSlot() {
     const name = 'Phiên ' + new Date().toLocaleDateString('vi-VN') + ' '
                + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     currentSlotId = _genId();
+    const filename = _nameToFile(name);
     const idx = await _loadIdx();
-    idx.unshift({ id: currentSlotId, name, updatedAt: now, activeCount: activeTables.size });
+    idx.unshift({ id: currentSlotId, name, filename, updatedAt: now, activeCount: activeTables.size });
     await _saveIdx(idx);
     const data = { ..._payload(), updatedAt: now };
-    if (_folderHandle) await _writeJSON(`slot_${currentSlotId}.json`, data);
+    if (_folderHandle) await _writeJSON(filename, data);
     else _lsSetSlot(currentSlotId, data);
     _addOrActivateTab(currentSlotId, name);
     showToast(`Đã lưu "${name}" → ${location}`);
   } else {
     // Write slot data
     const data = { ..._payload(), updatedAt: now };
+    const idx = await _loadIdx();
+    const entry = idx.find(e => e.id === currentSlotId);
     if (_folderHandle) {
-      await _writeJSON(`slot_${currentSlotId}.json`, data);
+      await _writeJSON(_entryFile(entry || { id: currentSlotId }), data);
     } else {
       _lsSetSlot(currentSlotId, data);
     }
     // Update index
-    const idx = await _loadIdx();
-    const entry = idx.find(e => e.id === currentSlotId);
     if (entry) { entry.updatedAt = now; entry.activeCount = activeTables.size; await _saveIdx(idx); }
     _updateBadge(idx);
     showToast(`Đã lưu → ${location}`);
@@ -324,9 +342,11 @@ async function saveCurrentSlot() {
 }
 
 async function loadSlotById(id) {
+  const idx = await _loadIdx();
+  const entry = idx.find(e => e.id === id);
   let data;
   if (_folderHandle) {
-    data = await _readJSON(`slot_${id}.json`);
+    data = await _readJSON(_entryFile(entry || { id }));
   } else {
     data = _lsGetSlot(id);
   }
@@ -342,8 +362,6 @@ async function loadSlotById(id) {
   Object.entries(data.colHidden || {}).forEach(([t, c]) => colHidden.set(t, new Set(c)));
   hiddenRefs      = new Set(data.hiddenRefs || []);
 
-  const idx = await _loadIdx();
-  const entry = idx.find(e => e.id === id);
   _addOrActivateTab(id, entry ? entry.name : id);
   _updateBadge(idx);
   update(false);
@@ -351,12 +369,14 @@ async function loadSlotById(id) {
 }
 
 async function deleteSlotById(id) {
+  const idx = await _loadIdx();
+  const entry = idx.find(e => e.id === id);
   if (_folderHandle) {
-    await _deleteFile(`slot_${id}.json`);
+    await _deleteFile(_entryFile(entry || { id }));
   } else {
     _lsDelSlot(id);
   }
-  await _saveIdx((await _loadIdx()).filter(e => e.id !== id));
+  await _saveIdx(idx.filter(e => e.id !== id));
   // Close tab if open
   if (openTabs.find(t => t.id === id)) {
     openTabs = openTabs.filter(t => t.id !== id);
@@ -551,12 +571,13 @@ async function _onNewSession() {
   const name = 'Phiên ' + new Date().toLocaleDateString('vi-VN') + ' '
              + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   currentSlotId = _genId();
+  const filename = _nameToFile(name);
   const idx = await _loadIdx();
-  idx.unshift({ id: currentSlotId, name, updatedAt: _nowISO(), activeCount: 0 });
+  idx.unshift({ id: currentSlotId, name, filename, updatedAt: _nowISO(), activeCount: 0 });
   await _saveIdx(idx);
   // Write empty slot file so it persists on reload
   const data = { src: '', pos: {}, mid: [], active: [], colHidden: {}, hiddenRefs: [], updatedAt: _nowISO() };
-  if (_folderHandle) await _writeJSON(`slot_${currentSlotId}.json`, data);
+  if (_folderHandle) await _writeJSON(filename, data);
   else _lsSetSlot(currentSlotId, data);
   // Reset canvas
   masterSrc = ''; editor.value = '';
@@ -613,13 +634,25 @@ document.getElementById('slot-name-badge').addEventListener('click', async () =>
   const entry = idx.find(e => e.id === currentSlotId);
   if (!entry) return;
   const n = prompt('Tên phiên:', entry.name);
-  if (n && n.trim()) {
-    entry.name = n.trim();
-    await _saveIdx(idx);
-    _updateBadge(idx);
-    const tab = openTabs.find(t => t.id === currentSlotId);
-    if (tab) { tab.name = entry.name; _renderTabBar(); }
+  if (!n || !n.trim() || n.trim() === entry.name) return;
+  const newName = n.trim();
+  const newFile = _nameToFile(newName);
+  // Rename file on disk if using folder
+  if (_folderHandle && entry.filename) {
+    try {
+      const data = await _readJSON(entry.filename);
+      if (data) {
+        await _writeJSON(newFile, data);
+        await _deleteFile(entry.filename);
+      }
+    } catch {}
   }
+  entry.name = newName;
+  entry.filename = newFile;
+  await _saveIdx(idx);
+  _updateBadge(idx);
+  const tab = openTabs.find(t => t.id === currentSlotId);
+  if (tab) { tab.name = newName; _renderTabBar(); }
 });
 
 // DBML textarea input → mark dirty
