@@ -3,224 +3,69 @@
 <head>
 <meta charset="UTF-8">
 <title>DBML Diagram</title>
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  font-size: 13px;
-  background: #f1f5f9;
-  color: #1e293b;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
-}
-
-header {
-  height: 48px;
-  background: #fff;
-  border-bottom: 1px solid #e2e8f0;
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  gap: 6px;
-  flex-shrink: 0;
-  z-index: 20;
-  box-shadow: 0 1px 3px rgba(0,0,0,.04);
-}
-.title { font-weight: 700; font-size: 14px; color: #0f172a; margin-right: 6px; }
-.toolbar-sep { width: 1px; height: 20px; background: #e2e8f0; margin: 0 2px; }
-
-.btn {
-  height: 32px; padding: 0 12px;
-  border: 1px solid #e2e8f0; border-radius: 6px;
-  background: #fff; color: #475569; font-size: 12.5px;
-  cursor: pointer; white-space: nowrap; user-select: none;
-  display: flex; align-items: center; gap: 5px;
-}
-.btn:hover { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
-.btn.active { background: #eff6ff; border-color: #93c5fd; color: #2563eb; }
-.btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
-.btn.primary:hover { background: #1d4ed8; }
-
-#status { margin-left: auto; font-size: 12px; color: #94a3b8; white-space: nowrap; }
-#status.err { color: #ef4444; }
-
-.workspace { display: flex; flex: 1; overflow: hidden; }
-
-/* ── FILTER PANEL ── */
-#filter-panel {
-  width: 230px;
-  background: #fff;
-  border-right: 1px solid #e2e8f0;
-  display: flex; flex-direction: column;
-  flex-shrink: 0;
-  overflow: hidden;
-  transition: width .2s ease, opacity .2s ease;
-}
-#filter-panel.hidden { width: 0; opacity: 0; pointer-events: none; }
-
-.fp-section { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; }
-.fp-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 7px; }
-.fp-input {
-  width: 100%; height: 30px;
-  border: 1px solid #e2e8f0; border-radius: 5px;
-  padding: 0 8px; font-size: 12px; color: #1e293b; outline: none;
-}
-.fp-input:focus { border-color: #93c5fd; box-shadow: 0 0 0 2px #dbeafe; }
-.fp-checks { display: flex; flex-direction: column; gap: 6px; }
-.fp-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #475569; cursor: pointer; user-select: none; }
-.fp-check input { cursor: pointer; accent-color: #2563eb; }
-.fp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-
-/* tree */
-#fp-tree { flex: 1; overflow-y: auto; overflow-x: hidden; }
-.tree-tbl { border-bottom: 1px solid #f1f5f9; }
-.tree-tbl-hdr {
-  display: flex; align-items: center; gap: 6px;
-  padding: 7px 14px; cursor: pointer; user-select: none;
-}
-.tree-tbl-hdr:hover { background: #f8fafc; }
-.tree-arrow {
-  font-size: 9px; width: 10px; color: #94a3b8;
-  transition: transform .15s; flex-shrink: 0;
-  display: inline-block; text-align: center;
-}
-.tree-arrow.open { transform: rotate(90deg); }
-.tree-tbl-name { font-size: 11.5px; color: #334155; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-cols { padding: 2px 14px 7px 30px; display: flex; flex-direction: column; gap: 2px; }
-.tree-col { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
-.tree-col-name { font-size: 11px; color: #475569; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-col-type { font-size: 10px; color: #94a3b8; white-space: nowrap; }
-
-.fp-reset {
-  margin: 10px 14px; padding: 0; height: 28px; width: calc(100% - 28px);
-  border: 1px solid #fca5a5; border-radius: 5px; background: #fff;
-  color: #ef4444; font-size: 11.5px; cursor: pointer; flex-shrink: 0;
-}
-.fp-reset:hover { background: #fef2f2; }
-
-/* ── EDITOR PANEL ── */
-.editor-panel {
-  width: 340px; min-width: 160px; max-width: 600px;
-  display: flex; flex-direction: column;
-  border-right: 1px solid #e2e8f0; background: #fff; flex-shrink: 0;
-}
-.editor-header {
-  height: 36px; padding: 0 14px;
-  border-bottom: 1px solid #f1f5f9;
-  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
-}
-.editor-header span { font-size: 10.5px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .07em; }
-.editor-header button { font-size: 11px; color: #94a3b8; background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
-.editor-header button:hover { background: #fee2e2; color: #ef4444; }
-#editor {
-  flex: 1; border: none; outline: none; resize: none;
-  font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 12.5px; line-height: 1.7; padding: 14px;
-  color: #1e293b; background: #fff; tab-size: 2;
-}
-
-.divider { width: 4px; cursor: col-resize; background: #e2e8f0; flex-shrink: 0; transition: background .15s; }
-.divider:hover, .divider.active { background: #2563eb; }
-
-.canvas-panel { flex: 1; overflow: hidden; position: relative; }
-#diagram { width: 100%; height: 100%; display: block; cursor: grab; }
-#diagram.grabbing { cursor: grabbing; }
-
-.tbl-group { transition: opacity .2s; }
-.tbl-group.dimmed { opacity: .08; pointer-events: none; }
-.tbl-group.focused .tbl-outline { stroke: #2563eb !important; stroke-width: 2px !important; }
-
-.edge-label { opacity: 0; transition: opacity .15s; pointer-events: none; }
-.edge-g:hover .edge-label { opacity: 1; }
-.edge-path { pointer-events: none; }
-.edge-sym  { pointer-events: none; }
-.edge-handle {
-  fill: #fff; stroke: #2563eb; stroke-width: 1.5;
-  opacity: 0; transition: opacity .15s;
-  cursor: ew-resize; pointer-events: none;
-}
-.edge-g:hover .edge-handle { opacity: 0.7; pointer-events: all; }
-.edge-g.selected .edge-handle { opacity: 1; pointer-events: all; }
-.edge-g.selected .edge-path { stroke: #2563eb !important; stroke-width: 2 !important; }
-
-#tooltip {
-  position: fixed; background: #1e293b; color: #f8fafc;
-  font-size: 11.5px; padding: 5px 10px; border-radius: 5px;
-  pointer-events: none; display: none; z-index: 999;
-  max-width: 280px; line-height: 1.5; white-space: pre-wrap;
-}
-
-/* ── LEGEND PANEL ── */
-#legend-panel {
-  position: absolute; bottom: 14px; right: 14px;
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.07);
-  z-index: 10; width: 220px; overflow: hidden;
-}
-#legend-hdr {
-  padding: 7px 12px; font-size: 10px; font-weight: 700; color: #64748b;
-  text-transform: uppercase; letter-spacing: .07em;
-  display: flex; align-items: center; justify-content: space-between;
-  cursor: pointer; user-select: none;
-  background: #f8fafc; border-bottom: 1px solid #e2e8f0;
-}
-#legend-hdr:hover { background: #f1f5f9; }
-#legend-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 9px; }
-#legend-body.collapsed { display: none; }
-.leg-sec-ttl { font-size: 9px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 4px; }
-.leg-row { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #475569; margin-bottom: 3px; }
-.leg-row:last-child { margin-bottom: 0; }
-.leg-row svg { flex-shrink: 0; }
-
-/* ── DRAW MODE ── */
-#draw-type-picker { display: flex; align-items: center; gap: 3px; margin-left: 2px; }
-.draw-type-btn {
-  height: 26px; padding: 0 7px;
-  border: 1px solid #e2e8f0; border-radius: 4px;
-  background: #fff; font-size: 11px; cursor: pointer;
-  color: #64748b; white-space: nowrap; user-select: none;
-}
-.draw-type-btn:hover { background: #f8fafc; color: #0f172a; }
-.draw-type-btn.active { background: #eff6ff; border-color: #93c5fd; color: #2563eb; font-weight: 600; }
-#btn-draw.active { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
-#draw-status {
-  position: absolute; bottom: 70px; left: 50%;
-  transform: translateX(-50%);
-  background: rgba(15,23,42,.88); color: #f1f5f9;
-  padding: 7px 18px; border-radius: 20px;
-  font-size: 12px; white-space: nowrap;
-  pointer-events: none; z-index: 20; display: none;
-}
-
-/* ── TOAST ── */
-#toast {
-  position: fixed; bottom: 22px; left: 50%;
-  transform: translateX(-50%) translateY(10px);
-  background: #1e293b; color: #f8fafc;
-  padding: 8px 22px; border-radius: 20px;
-  font-size: 12px; white-space: nowrap;
-  pointer-events: none; z-index: 1000;
-  opacity: 0; transition: opacity .25s, transform .25s;
-}
-#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <header>
   <span class="title">DBML Diagram</span>
   <div class="toolbar-sep"></div>
-  <button class="btn" id="btn-filter">☰ Filter</button>
-  <div class="toolbar-sep"></div>
-  <button class="btn" id="btn-draw">⤳ Nối</button>
-  <div id="draw-type-picker">
-    <button class="draw-type-btn active" data-type=">" title="FK → PK (One to Many)">1→N</button>
-    <button class="draw-type-btn" data-type="-" title="One to One">1:1</button>
-    <button class="draw-type-btn" data-type="<" title="Many → One">N:1</button>
+  <button class="btn" id="btn-filter">☰ Kho bảng</button>
+  <button class="btn active" id="btn-editor" title="Ẩn/Hiện DBML editor">⌨ DBML</button>
+  <div class="tb-dropdown-wrap">
+    <button class="btn" id="btn-toolbar-menu">≡ Toolbar ▾</button>
+    <div class="tb-menu hidden" id="tb-menu">
+      <div class="tb-section-label">Xem</div>
+      <button class="tb-item" id="tb-fullscreen">⤢ Full màn hình</button>
+      <button class="tb-item" id="tb-undo" disabled>↩ Undo</button>
+      <div class="tb-sep"></div>
+      <div class="tb-section-label">Chỉnh sửa</div>
+      <button class="tb-item" id="tb-delete-edge" disabled>✕ Xóa mũi tên đã chọn</button>
+    </div>
   </div>
+  <div class="tb-dropdown-wrap" id="draw-wrap">
+    <button class="btn" id="btn-draw">⤳ Nối ▾</button>
+    <div id="draw-type-panel" class="hidden">
+      <div class="tb-section-label">Chọn kiểu quan hệ</div>
+      <button class="dtp-btn active" data-type=">">
+        <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><line x1="23" y1="2" x2="23" y2="12"/><line x1="49" y1="7" x2="57" y2="3" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="7" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="11" stroke-linecap="round"/><line x1="46" y1="2" x2="46" y2="12"/></g></svg>
+        <code>&gt;</code><span>One → Many</span>
+      </button>
+      <button class="dtp-btn" data-type="<">
+        <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="23" y1="7" x2="15" y2="3" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="7" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="11" stroke-linecap="round"/><line x1="26" y1="2" x2="26" y2="12"/><line x1="54" y1="2" x2="54" y2="12"/><line x1="49" y1="2" x2="49" y2="12"/></g></svg>
+        <code>&lt;</code><span>Many → One</span>
+      </button>
+      <button class="dtp-btn" data-type="-">
+        <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><line x1="23" y1="2" x2="23" y2="12"/><line x1="54" y1="2" x2="54" y2="12"/><line x1="49" y1="2" x2="49" y2="12"/></g></svg>
+        <code>-</code><span>One : One</span>
+      </button>
+      <button class="dtp-btn" data-type=">0">
+        <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><line x1="23" y1="2" x2="23" y2="12"/><line x1="49" y1="7" x2="57" y2="3" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="7" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="11" stroke-linecap="round"/><circle cx="44" cy="7" r="3" fill="#161b22"/></g></svg>
+        <code>&gt;0</code><span>One → 0..N</span>
+      </button>
+      <button class="dtp-btn" data-type="0<">
+        <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="23" y1="7" x2="15" y2="3" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="7" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="11" stroke-linecap="round"/><circle cx="28" cy="7" r="3" fill="#161b22"/><line x1="54" y1="2" x2="54" y2="12"/><line x1="49" y1="2" x2="49" y2="12"/></g></svg>
+        <code>0&lt;</code><span>0..N → One</span>
+      </button>
+      <button class="dtp-btn" data-type=">?">
+        <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><line x1="23" y1="2" x2="23" y2="12"/><line x1="54" y1="2" x2="54" y2="12"/><circle cx="47" cy="7" r="3" fill="#161b22"/></g></svg>
+        <code>&gt;?</code><span>One → 0..1</span>
+      </button>
+      <button class="dtp-btn" data-type="?<">
+        <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><circle cx="25" cy="7" r="3" fill="#161b22"/><line x1="54" y1="2" x2="54" y2="12"/><line x1="49" y1="2" x2="49" y2="12"/></g></svg>
+        <code>?&lt;</code><span>0..1 → One</span>
+      </button>
+      <button class="dtp-btn" data-type="0>">
+        <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><circle cx="25" cy="7" r="3" fill="#161b22"/><line x1="49" y1="7" x2="57" y2="3" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="7" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="11" stroke-linecap="round"/><line x1="46" y1="2" x2="46" y2="12"/></g></svg>
+        <code>0&gt;</code><span>0..1 → Many</span>
+      </button>
+      <button class="dtp-btn" data-type="<>">
+        <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="23" y1="7" x2="15" y2="3" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="7" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="11" stroke-linecap="round"/><circle cx="28" cy="7" r="3" fill="#161b22"/><line x1="49" y1="7" x2="57" y2="3" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="7" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="11" stroke-linecap="round"/><circle cx="44" cy="7" r="3" fill="#161b22"/></g></svg>
+        <code>&lt;&gt;</code><span>Many : Many</span>
+      </button>
+    </div>
+  </div>
+  <button class="btn" id="btn-delete-selected" disabled title="Xóa bảng/mũi tên đang chọn (ESC)">✕ Xóa</button>
   <div class="toolbar-sep"></div>
   <button class="btn primary" id="btn-layout">⟳ Layout</button>
   <button class="btn" id="btn-fit">⊡ Fit</button>
@@ -231,32 +76,53 @@ header {
 
 <div class="workspace">
 
-  <!-- FILTER PANEL -->
+  <!-- LIBRARY PANEL -->
   <div id="filter-panel" class="hidden">
     <div class="fp-section">
-      <div class="fp-label">Ẩn loại cột</div>
+      <div class="fp-label">Tìm bảng / cột</div>
+      <input class="fp-input" id="fp-search" placeholder="Tên bảng hoặc tên cột…" type="text">
+    </div>
+    <div class="fp-section" style="padding-top:8px;padding-bottom:8px;">
       <div class="fp-checks">
         <label class="fp-check"><input type="checkbox" id="fp-hidepk"> Ẩn PK</label>
         <label class="fp-check"><input type="checkbox" id="fp-hidefk"> Ẩn FK</label>
-        <label class="fp-check"><input type="checkbox" id="fp-hidept"> Ẩn PARTITION</label>
+        <label class="fp-check"><input type="checkbox" id="fp-hidept"> Ẩn Partition</label>
       </div>
     </div>
-    <div class="fp-section">
-      <div class="fp-label">Bảng &amp; Cột</div>
-      <input class="fp-input" id="fp-search" placeholder="Tìm bảng / cột…" type="text">
+    <div class="fp-section" id="fp-schema-filter">
+      <div class="fp-label">Schema</div>
+      <div class="fp-schema-checks" id="fp-schema-checks"></div>
     </div>
     <div id="fp-tree"></div>
-    <button class="fp-reset" id="fp-reset">↺ Reset filter</button>
+    <div class="lib-footer">
+      <button class="btn" id="btn-add-all" style="flex:1;justify-content:center;font-size:11px">+ Thêm tất cả</button>
+      <button class="btn" id="btn-clear-canvas" style="flex:1;justify-content:center;font-size:11px">✕ Xóa canvas</button>
+    </div>
   </div>
 
   <!-- EDITOR -->
   <div class="editor-panel" id="editor-panel">
-    <div class="editor-header">
-      <span>DBML Editor</span>
-      <button id="btn-clear">✕ Xóa</button>
+    <div class="ed-tabs">
+      <button class="ed-tab active" id="tab-master">⚙ Kho DBML</button>
+      <button class="ed-tab" id="tab-canvas">✏ Canvas</button>
     </div>
-    <textarea id="editor" spellcheck="false"
-      placeholder="Paste DBML vào đây…"></textarea>
+    <div class="ed-pane" id="ed-master-pane">
+      <textarea id="editor" spellcheck="false"
+        placeholder="Paste DBML vào đây…"></textarea>
+      <div class="ed-footer">
+        <button class="btn" id="btn-clear" style="font-size:11px;height:26px;padding:0 10px">✕ Xóa</button>
+        <span class="ed-hint">Ctrl+S để lưu</span>
+        <button class="btn primary" id="btn-save-master" style="font-size:11px;height:26px;padding:0 10px">💾 Lưu</button>
+      </div>
+    </div>
+    <div class="ed-pane hidden" id="ed-canvas-pane">
+      <textarea id="canvas-editor" spellcheck="false"
+        placeholder="Thêm bảng vào canvas để xem DBML tương ứng…"></textarea>
+      <div class="ed-footer">
+        <span class="ed-hint">Ctrl+S để apply</span>
+        <button class="btn primary" id="btn-apply-canvas" style="font-size:11px;height:26px;padding:0 10px">↻ Apply</button>
+      </div>
+    </div>
   </div>
 
   <div class="divider" id="divider"></div>
@@ -265,14 +131,19 @@ header {
   <div class="canvas-panel">
     <svg id="diagram">
       <defs>
-        <filter id="tbl-shadow" x="-10%" y="-10%" width="120%" height="120%">
-          <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.10)"/>
-        </filter>
+        <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+          <circle cx="12" cy="12" r="0.8" fill="#21262d"/>
+        </pattern>
+        <pattern id="cell-grid" x="0" y="0" width="60" height="80" patternUnits="userSpaceOnUse">
+          <rect width="60" height="80" fill="none" stroke="#30363d" stroke-width="0.5"/>
+        </pattern>
       </defs>
-      <rect id="svg-bg" x="-50000" y="-50000" width="100000" height="100000" fill="#f1f5f9"/>
+      <rect id="svg-bg" x="-50000" y="-50000" width="100000" height="100000" fill="#0d1117"/>
       <g id="viewport">
-        <g id="edges-layer"></g>
+        <rect x="-50000" y="-50000" width="100000" height="100000" fill="url(#dots)"/>
+        <rect x="-50000" y="-50000" width="100000" height="100000" fill="url(#cell-grid)" opacity="0.6"/>
         <g id="tables-layer"></g>
+        <g id="edges-layer"></g>
       </g>
     </svg>
 
@@ -280,41 +151,92 @@ header {
       <div id="legend-hdr"><span>Chú giải</span><span id="legend-toggle">▾</span></div>
       <div id="legend-body">
         <div>
-          <div class="leg-sec-ttl">Kiểu quan hệ</div>
-          <div class="leg-row">
-            <svg width="60" height="14"><line x1="3" y1="3" x2="3" y2="11" stroke="#64748b" stroke-width="1.5"/><line x1="9" y1="3" x2="9" y2="11" stroke="#64748b" stroke-width="1.5"/><line x1="9" y1="7" x2="40" y2="7" stroke="#64748b" stroke-width="1.5"/><line x1="40" y1="3" x2="40" y2="11" stroke="#64748b" stroke-width="1.5"/><line x1="40" y1="3" x2="54" y2="7" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/><line x1="40" y1="7" x2="54" y2="7" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/><line x1="40" y1="11" x2="54" y2="7" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/></svg>
-            One → Many
+          <div class="leg-sec-ttl">Kiểu quan hệ &amp; Cú pháp DBML</div>
+          <div style="display:grid;grid-template-columns:72px auto 1fr;gap:3px 6px;align-items:center">
+            <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><line x1="23" y1="2" x2="23" y2="12"/><line x1="49" y1="7" x2="57" y2="3" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="7" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="11" stroke-linecap="round"/><line x1="46" y1="2" x2="46" y2="12"/></g></svg>
+            <code style="font-size:10px;background:#21262d;color:#f97316;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace">&gt;</code>
+            <span style="font-size:10px;color:#94a3b8">One → Many</span>
+
+            <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="23" y1="7" x2="15" y2="3" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="7" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="11" stroke-linecap="round"/><line x1="26" y1="2" x2="26" y2="12"/><line x1="54" y1="2" x2="54" y2="12"/><line x1="49" y1="2" x2="49" y2="12"/></g></svg>
+            <code style="font-size:10px;background:#21262d;color:#f97316;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace">&lt;</code>
+            <span style="font-size:10px;color:#94a3b8">Many → One</span>
+
+            <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><line x1="23" y1="2" x2="23" y2="12"/><line x1="54" y1="2" x2="54" y2="12"/><line x1="49" y1="2" x2="49" y2="12"/></g></svg>
+            <code style="font-size:10px;background:#21262d;color:#f97316;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace">-</code>
+            <span style="font-size:10px;color:#94a3b8">One : One</span>
+
+            <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><line x1="23" y1="2" x2="23" y2="12"/><line x1="49" y1="7" x2="57" y2="3" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="7" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="11" stroke-linecap="round"/><circle cx="44" cy="7" r="3" fill="#0d1117"/></g></svg>
+            <code style="font-size:10px;background:#21262d;color:#f97316;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace">&gt;0</code>
+            <span style="font-size:10px;color:#94a3b8">One → 0..N</span>
+
+            <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="23" y1="7" x2="15" y2="3" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="7" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="11" stroke-linecap="round"/><circle cx="28" cy="7" r="3" fill="#0d1117"/><line x1="54" y1="2" x2="54" y2="12"/><line x1="49" y1="2" x2="49" y2="12"/></g></svg>
+            <code style="font-size:10px;background:#21262d;color:#f97316;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace">0&lt;</code>
+            <span style="font-size:10px;color:#94a3b8">0..N → One</span>
+
+            <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><circle cx="25" cy="7" r="3" fill="#0d1117"/><line x1="49" y1="7" x2="57" y2="3" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="7" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="11" stroke-linecap="round"/><line x1="46" y1="2" x2="46" y2="12"/></g></svg>
+            <code style="font-size:10px;background:#21262d;color:#f97316;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace">0&gt;</code>
+            <span style="font-size:10px;color:#94a3b8">0..1 → Many</span>
+
+            <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><line x1="23" y1="2" x2="23" y2="12"/><line x1="54" y1="2" x2="54" y2="12"/><circle cx="47" cy="7" r="3" fill="#0d1117"/></g></svg>
+            <code style="font-size:10px;background:#21262d;color:#f97316;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace">&gt;?</code>
+            <span style="font-size:10px;color:#94a3b8">One → 0..1</span>
+
+            <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="18" y1="2" x2="18" y2="12"/><circle cx="25" cy="7" r="3" fill="#0d1117"/><line x1="54" y1="2" x2="54" y2="12"/><line x1="49" y1="2" x2="49" y2="12"/></g></svg>
+            <code style="font-size:10px;background:#21262d;color:#f97316;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace">?&lt;</code>
+            <span style="font-size:10px;color:#94a3b8">0..1 → One</span>
+
+            <svg width="72" height="14"><g stroke="#64748b" fill="none" stroke-width="1.5"><line x1="15" y1="7" x2="57" y2="7" stroke-opacity="0.3"/><line x1="23" y1="7" x2="15" y2="3" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="7" stroke-linecap="round"/><line x1="23" y1="7" x2="15" y2="11" stroke-linecap="round"/><circle cx="28" cy="7" r="3" fill="#0d1117"/><line x1="49" y1="7" x2="57" y2="3" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="7" stroke-linecap="round"/><line x1="49" y1="7" x2="57" y2="11" stroke-linecap="round"/><circle cx="44" cy="7" r="3" fill="#0d1117"/></g></svg>
+            <code style="font-size:10px;background:#21262d;color:#f97316;padding:1px 5px;border-radius:3px;font-family:Consolas,monospace">&lt;&gt;</code>
+            <span style="font-size:10px;color:#94a3b8">Many : Many</span>
           </div>
-          <div class="leg-row">
-            <svg width="60" height="14"><line x1="3" y1="3" x2="3" y2="11" stroke="#64748b" stroke-width="1.5"/><line x1="9" y1="3" x2="9" y2="11" stroke="#64748b" stroke-width="1.5"/><line x1="9" y1="7" x2="51" y2="7" stroke="#64748b" stroke-width="1.5"/><line x1="51" y1="3" x2="51" y2="11" stroke="#64748b" stroke-width="1.5"/><line x1="57" y1="3" x2="57" y2="11" stroke="#64748b" stroke-width="1.5"/></svg>
-            One → One
-          </div>
-          <div class="leg-row">
-            <svg width="60" height="14"><line x1="14" y1="3" x2="0" y2="7" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/><line x1="14" y1="7" x2="0" y2="7" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/><line x1="14" y1="11" x2="0" y2="7" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/><line x1="14" y1="3" x2="14" y2="11" stroke="#64748b" stroke-width="1.5"/><line x1="14" y1="7" x2="51" y2="7" stroke="#64748b" stroke-width="1.5"/><line x1="51" y1="3" x2="51" y2="11" stroke="#64748b" stroke-width="1.5"/><line x1="57" y1="3" x2="57" y2="11" stroke="#64748b" stroke-width="1.5"/></svg>
-            Many → One
+          <div style="margin-top:7px;font-size:9.5px;color:#475569;line-height:1.5">
+            Trong DBML: <code style="background:#21262d;color:#e2e8f0;padding:1px 4px;border-radius:3px;font-size:9px">Ref: a.col &gt; b.col</code><br>
+            Hoặc inline: <code style="background:#21262d;color:#e2e8f0;padding:1px 4px;border-radius:3px;font-size:9px">col type [ref: &gt; s.tbl.col]</code>
           </div>
         </div>
         <div>
-          <div class="leg-sec-ttl">Cú pháp DBML</div>
-          <div class="leg-row"><code style="font-size:10px;background:#f1f5f9;padding:1px 5px;border-radius:3px">ref: &gt; tbl.col</code> FK → PK</div>
-          <div class="leg-row"><code style="font-size:10px;background:#f1f5f9;padding:1px 5px;border-radius:3px">ref: - tbl.col</code> One-to-One</div>
-          <div class="leg-row"><code style="font-size:10px;background:#f1f5f9;padding:1px 5px;border-radius:3px">ref: &lt; tbl.col</code> PK ← FK</div>
-        </div>
-        <div>
-          <div class="leg-sec-ttl">Màu bảng</div>
-          <div class="leg-row"><span class="fp-dot" style="background:#3b82f6"></span> clean schema</div>
-          <div class="leg-row"><span class="fp-dot" style="background:#10b981"></span> dwh schema</div>
-          <div class="leg-row"><span class="fp-dot" style="background:#f59e0b"></span> other</div>
+          <div class="leg-sec-ttl">Loại bảng (note:)</div>
+          <div class="leg-row"><span class="fp-dot" style="background:#f97316"></span> <code style="font-size:10px;background:#21262d;color:#e2e8f0;padding:1px 5px;border-radius:3px">fact</code> Fact</div>
+          <div class="leg-row"><span class="fp-dot" style="background:#38bdf8"></span> <code style="font-size:10px;background:#21262d;color:#e2e8f0;padding:1px 5px;border-radius:3px">dim</code> Dimension</div>
+          <div class="leg-row"><span class="fp-dot" style="background:#34d399"></span> <code style="font-size:10px;background:#21262d;color:#e2e8f0;padding:1px 5px;border-radius:3px">ref</code> Reference</div>
+          <div class="leg-row"><span class="fp-dot" style="background:#c4b5fd"></span> <code style="font-size:10px;background:#21262d;color:#e2e8f0;padding:1px 5px;border-radius:3px">bridge</code> Bridge</div>
+          <div class="leg-row"><span class="fp-dot" style="background:#fbbf24"></span> <code style="font-size:10px;background:#21262d;color:#e2e8f0;padding:1px 5px;border-radius:3px">snapshot</code> Snapshot</div>
+          <div class="leg-row"><span class="fp-dot" style="background:#5eead4"></span> <code style="font-size:10px;background:#21262d;color:#e2e8f0;padding:1px 5px;border-radius:3px">agg</code> Aggregate</div>
+          <div class="leg-row"><span class="fp-dot" style="background:#64748b"></span> <code style="font-size:10px;background:#21262d;color:#e2e8f0;padding:1px 5px;border-radius:3px">staging</code> Staging</div>
+          <div class="leg-row"><span class="fp-dot" style="background:#475569"></span> <code style="font-size:10px;background:#21262d;color:#e2e8f0;padding:1px 5px;border-radius:3px">audit</code> Audit/Log</div>
+          <div class="leg-row"><span class="fp-dot" style="background:#30363d"></span> — Other</div>
         </div>
         <div>
           <div class="leg-sec-ttl">Ký hiệu cột</div>
-          <div class="leg-row"><span style="color:#b91c1c;font-weight:700;font-size:12px">#</span> Primary Key (PK)</div>
-          <div class="leg-row"><span style="color:#d97706;font-size:12px">◇</span> Foreign Key (FK)</div>
-          <div class="leg-row"><span style="color:#059669;font-size:12px">⊕</span> Partition</div>
+          <div class="leg-row"><span style="color:#f97316;font-weight:700;font-size:12px">#</span> Primary Key (PK)</div>
+          <div class="leg-row"><span style="color:#93c5fd;font-size:12px">◇</span> Foreign Key (FK)</div>
+          <div class="leg-row"><span style="color:#5eead4;font-size:12px">⊕</span> Partition</div>
         </div>
       </div>
     </div>
     <div id="draw-status"></div>
+    <div id="join-suggest-panel" class="hidden"></div>
+
+    <!-- CARDINALITY PICKER -->
+    <div id="card-picker" class="hidden">
+      <div class="cp-header">Ký hiệu đầu mũi tên</div>
+      <button class="cp-btn" data-card="one">
+        <svg width="28" height="14"><g stroke="#94a3b8" fill="none" stroke-width="1.5"><line x1="0" y1="7" x2="11" y2="7" stroke-opacity="0.3"/><line x1="11" y1="2" x2="11" y2="12"/><line x1="7" y1="2" x2="7" y2="12"/></g></svg>
+        One (||)
+      </button>
+      <button class="cp-btn" data-card="zero-one">
+        <svg width="28" height="14"><g stroke="#94a3b8" fill="none" stroke-width="1.5"><line x1="0" y1="7" x2="11" y2="7" stroke-opacity="0.3"/><line x1="11" y1="2" x2="11" y2="12"/><circle cx="5" cy="7" r="3" fill="#161b22"/></g></svg>
+        Zero-or-one (O|)
+      </button>
+      <button class="cp-btn" data-card="many">
+        <svg width="28" height="14"><g stroke="#94a3b8" fill="none" stroke-width="1.5"><line x1="0" y1="7" x2="8" y2="7" stroke-opacity="0.3"/><line x1="8" y1="7" x2="14" y2="4" stroke-linecap="round"/><line x1="8" y1="7" x2="14" y2="7" stroke-linecap="round"/><line x1="8" y1="7" x2="14" y2="10" stroke-linecap="round"/><line x1="6" y1="2" x2="6" y2="12"/></g></svg>
+        One-or-many (&lt;|)
+      </button>
+      <button class="cp-btn" data-card="zero-many">
+        <svg width="28" height="14"><g stroke="#94a3b8" fill="none" stroke-width="1.5"><line x1="0" y1="7" x2="8" y2="7" stroke-opacity="0.3"/><line x1="8" y1="7" x2="14" y2="4" stroke-linecap="round"/><line x1="8" y1="7" x2="14" y2="7" stroke-linecap="round"/><line x1="8" y1="7" x2="14" y2="10" stroke-linecap="round"/><circle cx="4" cy="7" r="3" fill="#161b22"/></g></svg>
+        Zero-or-many (&lt;O)
+      </button>
+    </div>
   </div>
 </div>
 
@@ -323,1264 +245,16 @@ header {
 
 <script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
-<script>
-'use strict';
-
-/* ══════════════════════════════════════════════
-   CONSTANTS
-══════════════════════════════════════════════ */
-const TBL_W  = 240;
-const HDR_H  = 44;
-const ROW_H  = 24;
-const PAD_B  = 8;
-
-const CF_L   = 13;
-const CF_S   = 8;
-const CF_BAR = 6;
-const LANE_STEP = 22;
-
-const SCHEMA_COLORS = {
-  clean: { border: '#3b82f6', hdr: '#eff6ff', txt: '#1d4ed8' },
-  dwh:   { border: '#10b981', hdr: '#ecfdf5', txt: '#065f46' },
-  _:     { border: '#f59e0b', hdr: '#fffbeb', txt: '#b45309' },
-};
-
-function getColors(note) {
-  const n = (note || '').toLowerCase().trimStart();
-  if (n.startsWith('clean')) return SCHEMA_COLORS.clean;
-  if (n.startsWith('dwh'))   return SCHEMA_COLORS.dwh;
-  return SCHEMA_COLORS._;
-}
-
-/* ══════════════════════════════════════════════
-   DBML PARSER
-══════════════════════════════════════════════ */
-function parseDBML(src) {
-  const tables = [], refs = [];
-  const text = src
-    .replace(/\/\/[^\n]*/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '');
-
-  const tableRe = /\bTable\s+(\w+)\s*(?:\[([^\]]*)\])?\s*\{/g;
-  let m;
-  while ((m = tableRe.exec(text)) !== null) {
-    const name = m[1], attrStr = m[2] || '';
-    let depth = 1, i = m.index + m[0].length;
-    const bodyStart = i;
-    while (i < text.length && depth > 0) {
-      if (text[i] === '{') depth++; else if (text[i] === '}') depth--;
-      i++;
-    }
-    const body = text.slice(bodyStart, i - 1);
-    const noteM = attrStr.match(/note:\s*['"]([^'"]*)['"]/i);
-    const note  = noteM ? noteM[1] : '';
-    const columns = [];
-    body.split('\n').forEach(line => {
-      const col = parseCol(line.trim());
-      if (!col) return;
-      columns.push(col);
-      if (col.fk) refs.push({ from: { table: name, col: col.name }, to: col.fk, type: '>' });
-    });
-    tables.push({ name, note, columns });
-  }
-
-  const refRe = /\bRef\b[^:]*:\s*(\w+)\.(\w+)\s*([<>-])\s*(\w+)\.(\w+)/mg;
-  while ((m = refRe.exec(text)) !== null)
-    refs.push({ from: { table: m[1], col: m[2] }, to: { table: m[4], col: m[5] }, type: m[3] });
-
-  const seen = new Set();
-  return { tables, refs: refs.filter(r => {
-    const k = `${r.from.table}.${r.from.col}→${r.to.table}.${r.to.col}`;
-    return seen.has(k) ? false : (seen.add(k), true);
-  })};
-}
-
-function parseCol(line) {
-  if (!line || /^(Note|\/\/)/.test(line)) return null;
-  const sp = line.search(/\s/);
-  if (sp === -1) return null;
-  const name = line.slice(0, sp);
-  if (!/^\w+$/.test(name)) return null;
-  const rest  = line.slice(sp).trim();
-  const brk   = rest.indexOf('[');
-  const type  = (brk === -1 ? rest : rest.slice(0, brk)).trim() || 'varchar';
-  const attrs = brk === -1 ? '' : rest.slice(brk + 1, rest.lastIndexOf(']'));
-  const pk    = /\bpk\b/i.test(attrs);
-  const noteM = attrs.match(/note:\s*['"]([^'"]*)['"]/i);
-  const note  = noteM ? noteM[1] : '';
-  const isPt  = /\bPARTITION\b/i.test(note);
-  const refM  = attrs.match(/ref:\s*([<>-])\s*(\w+)\.(\w+)/);
-  const fk    = refM ? { table: refM[2], col: refM[3] } : null;
-  return { name, type, pk, fk, note, isPt };
-}
-
-/* ══════════════════════════════════════════════
-   LAYOUT
-══════════════════════════════════════════════ */
-function computeLayout(tables, refs) {
-  const g = new dagre.graphlib.Graph({ multigraph: true });
-  g.setGraph({ rankdir: 'LR', ranksep: 200, nodesep: 80, marginx: 80, marginy: 80 });
-  g.setDefaultEdgeLabel(() => ({}));
-  tables.forEach(t => g.setNode(t.name, { width: TBL_W, height: HDR_H + t.columns.length * ROW_H + PAD_B }));
-  refs.forEach((r, i) => {
-    if (g.hasNode(r.from.table) && g.hasNode(r.to.table) && r.from.table !== r.to.table)
-      g.setEdge(r.from.table, r.to.table, {}, 'e' + i);
-  });
-  dagre.layout(g);
-  const pos = {};
-  g.nodes().forEach(n => { const nd = g.node(n); if (nd) pos[n] = { x: nd.x - nd.width/2, y: nd.y - nd.height/2 }; });
-  return pos;
-}
-
-/* ══════════════════════════════════════════════
-   SVG UTILS
-══════════════════════════════════════════════ */
-function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function trunc(s, n) { s = String(s); return s.length > n ? s.slice(0,n-1)+'…' : s; }
-
-/* ══════════════════════════════════════════════
-   TABLE SVG
-══════════════════════════════════════════════ */
-
-// Returns inner SVG content (no outer <g>) for a table, skipping hiddenCols.
-// hiddenCols: Set<string> of column names to exclude (affects height too).
-function tableBodySVG(table, hiddenCols) {
-  const visCols = table.columns.filter(col => !hiddenCols.has(col.name));
-  const H  = HDR_H + visCols.length * ROW_H + PAD_B;
-  const C  = getColors(table.note);
-  const rawSchema = (table.note || '').split('.')[0].replace(/\\n.*/, '').trim();
-  const schemaHint = rawSchema.slice(0, 22);
-
-  let s = '';
-  s += `<rect class="tbl-outline" width="${TBL_W}" height="${H}" rx="7" fill="#fff"
-    stroke="${C.border}" stroke-width="1.5" filter="url(#tbl-shadow)"/>`;
-  s += `<rect x="0" y="0" width="${TBL_W}" height="${HDR_H}" rx="7" fill="${C.hdr}"/>`;
-  s += `<rect x="0" y="${HDR_H - 7}" width="${TBL_W}" height="7" fill="${C.hdr}"/>`;
-  s += `<line x1="0" y1="${HDR_H}" x2="${TBL_W}" y2="${HDR_H}" stroke="${C.border}" stroke-width="1" opacity=".4"/>`;
-  s += `<rect x="0" y="0" width="4" height="${H}" rx="3" fill="${C.border}"/>`;
-  if (schemaHint)
-    s += `<text x="13" y="15" font-size="9.5" fill="${C.txt}" opacity=".65" font-family="Segoe UI,system-ui,sans-serif">${esc(schemaHint)}</text>`;
-  const nameY = schemaHint ? 31 : 27;
-  s += `<text x="13" y="${nameY}" font-size="13" font-weight="700" fill="${C.txt}" font-family="Segoe UI,system-ui,sans-serif">${esc(trunc(table.name, 22))}</text>`;
-  s += `<rect class="tbl-hdr-hit" x="0" y="0" width="${TBL_W}" height="${HDR_H}" fill="transparent" data-table="${esc(table.name)}" style="cursor:pointer"/>`;
-
-  visCols.forEach((col, i) => {
-    const cy = HDR_H + i * ROW_H;
-    if (i % 2 === 1)
-      s += `<rect x="4" y="${cy}" width="${TBL_W - 4}" height="${ROW_H}" fill="#f8fafc"/>`;
-    s += `<rect class="col-hl" x="4" y="${cy}" width="${TBL_W - 4}" height="${ROW_H}" fill="#dbeafe" opacity="0" data-table="${esc(table.name)}" data-col="${esc(col.name)}"/>`;
-
-    let icon = '', iconColor = '#94a3b8';
-    if      (col.pk)   { icon = '#';  iconColor = '#b91c1c'; }
-    else if (col.isPt) { icon = '⊕'; iconColor = '#059669'; }
-    else if (col.fk)   { icon = '◇'; iconColor = '#d97706'; }
-
-    let tx = 13;
-    if (icon) {
-      s += `<text x="${tx}" y="${cy + 17}" font-size="10" font-weight="700" fill="${iconColor}"
-        font-family="Segoe UI,system-ui,sans-serif">${icon}</text>`;
-      tx += 14;
-    }
-    const fw = (col.pk || col.fk) ? '600' : '400';
-    s += `<text x="${tx}" y="${cy + 17}" font-size="12" font-weight="${fw}" fill="#334155"
-      font-family="Segoe UI,system-ui,sans-serif">${esc(trunc(col.name, 18))}</text>`;
-    s += `<text x="${TBL_W - 10}" y="${cy + 17}" font-size="10.5" fill="#94a3b8" text-anchor="end"
-      font-family="Segoe UI,system-ui,sans-serif">${esc(trunc(col.type, 10))}</text>`;
-    const tip = col.note ? `data-tip="${esc(col.note)}"` : '';
-    s += `<rect class="col-hit" x="0" y="${cy}" width="${TBL_W}" height="${ROW_H}" fill="transparent"
-      data-table="${esc(table.name)}" data-col="${esc(col.name)}" ${tip} style="cursor:pointer"/>`;
-  });
-
-  return s;
-}
-
-function tableSVG(table, x, y) {
-  const id = 'tbl-' + table.name;
-  return `<g class="tbl-group" id="${esc(id)}" data-name="${esc(table.name)}" transform="translate(${x},${y})">`
-    + tableBodySVG(table, new Set())
-    + `</g>`;
-}
-
-/* ══════════════════════════════════════════════
-   CROW'S FOOT SYMBOLS
-   dir: +1 = symbol extends toward right (away from table)
-        -1 = symbol extends toward left
-══════════════════════════════════════════════ */
-function symbolSVG(x, y, card, dir, color) {
-  const parts = [];
-  if (card === 'many') {
-    const tip = x + dir * CF_L;
-    parts.push(`<line x1="${x}" y1="${y}" x2="${tip}" y2="${y - CF_S}" stroke-linecap="round"/>`);
-    parts.push(`<line x1="${x}" y1="${y}" x2="${tip}" y2="${y}"        stroke-linecap="round"/>`);
-    parts.push(`<line x1="${x}" y1="${y}" x2="${tip}" y2="${y + CF_S}" stroke-linecap="round"/>`);
-    const bar = tip + dir * CF_BAR;
-    parts.push(`<line x1="${bar}" y1="${y - CF_S - 2}" x2="${bar}" y2="${y + CF_S + 2}"/>`);
-  } else {
-    const b1 = x + dir * 5;
-    const b2 = x + dir * 12;
-    parts.push(`<line x1="${b1}" y1="${y - 8}" x2="${b1}" y2="${y + 8}"/>`);
-    parts.push(`<line x1="${b2}" y1="${y - 8}" x2="${b2}" y2="${y + 8}"/>`);
-  }
-  return `<g class="edge-sym" stroke="${color}" fill="none" stroke-width="1.6">${parts.join('')}</g>`;
-}
-
-/* ══════════════════════════════════════════════
-   ORTHOGONAL PATH
-══════════════════════════════════════════════ */
-function buildPath(x1, y1, xmid, x2, y2) {
-  if (Math.abs(y2 - y1) < 1) return `M${x1},${y1} H${x2}`;
-  const r = Math.min(12,
-    Math.abs(xmid - x1) * 0.45,
-    Math.abs(xmid - x2) * 0.45,
-    Math.abs(y2 - y1) / 2
-  );
-  if (r < 0.5) return `M${x1},${y1} H${xmid} V${y2} H${x2}`;
-  const ray  = y2 > y1 ?  r : -r;
-  const rax1 = xmid >= x1 ?  r : -r;
-  const rax2 = x2  >= xmid ?  r : -r;
-  return [
-    `M${x1},${y1}`,
-    `H${xmid - rax1}`,
-    `Q${xmid},${y1} ${xmid},${y1 + ray}`,
-    `V${y2 - ray}`,
-    `Q${xmid},${y2} ${xmid + rax2},${y2}`,
-    `H${x2}`
-  ].join(' ');
-}
-
-/* ══════════════════════════════════════════════
-   FIND LANE
-══════════════════════════════════════════════ */
-function findLane(x1, x2, y1, y2, fromTbl, toTbl) {
-  if (!currentSchema) return (x1 + x2) / 2;
-  const base = (x1 + x2) / 2;
-  const miny = Math.min(y1, y2) - 8;
-  const maxy = Math.max(y1, y2) + 8;
-  const fromP = tablePositions[fromTbl];
-  const toP   = tablePositions[toTbl];
-
-  for (let d = 0; d <= 700; d += 6) {
-    for (const cx of (d === 0 ? [base] : [base + d, base - d])) {
-      if (fromP && cx > fromP.x + 2 && cx < fromP.x + TBL_W - 2) continue;
-      if (toP   && cx > toP.x   + 2 && cx < toP.x   + TBL_W - 2) continue;
-      let blocked = false;
-      for (const t of currentSchema.tables) {
-        if (t.name === fromTbl || t.name === toTbl) continue;
-        const p = tablePositions[t.name];
-        if (!p) continue;
-        const th = HDR_H + t.columns.length * ROW_H + PAD_B;
-        if (cx >= p.x - 8 && cx <= p.x + TBL_W + 8 && maxy >= p.y - 8 && miny <= p.y + th + 8) {
-          blocked = true; break;
-        }
-      }
-      if (!blocked) return cx;
-    }
-  }
-  return base;
-}
-
-/* ══════════════════════════════════════════════
-   HELPERS
-══════════════════════════════════════════════ */
-function getTablePos(name) {
-  const el = document.getElementById('tbl-' + name);
-  if (!el) return null;
-  const t = (el.getAttribute('transform') || '').match(/translate\(([^,]+),([^)]+)\)/);
-  const x = t ? parseFloat(t[1]) : 0, y = t ? parseFloat(t[2]) : 0;
-  const tb = currentSchema && currentSchema.tables.find(tb => tb.name === name);
-  if (!tb) return null;
-  return { x, y, w: TBL_W, h: HDR_H + tb.columns.length * ROW_H + PAD_B };
-}
-
-function getColY(tblName, colName) {
-  if (!currentSchema) return HDR_H / 2;
-  const tb  = currentSchema.tables.find(t => t.name === tblName);
-  if (!tb) return HDR_H / 2;
-  const idx = tb.columns.findIndex(c => c.name === colName);
-  return HDR_H + (idx < 0 ? 0 : idx) * ROW_H + ROW_H / 2;
-}
-
-/* ══════════════════════════════════════════════
-   RENDER EDGES
-   Bug fix 1: skip edges where either table is display:none
-   Bug fix 2: fromCard='one', toCard='many' for type '>'
-              so arrow reads left→right as "1 → many"
-══════════════════════════════════════════════ */
-function renderEdges() {
-  const layer = document.getElementById('edges-layer');
-  if (!currentSchema) { layer.innerHTML = ''; return; }
-
-  const pairMap = new Map();
-  currentSchema.refs.forEach((r, i) => {
-    if (r.from.table === r.to.table) return;
-    const k = [r.from.table, r.to.table].sort().join('\0');
-    if (!pairMap.has(k)) pairMap.set(k, []);
-    pairMap.get(k).push(i);
-  });
-
-  pairMap.forEach(indices => {
-    indices.sort((a, b) => {
-      const ra = currentSchema.refs[a], rb = currentSchema.refs[b];
-      return getColY(ra.from.table, ra.from.col) - getColY(rb.from.table, rb.from.col);
-    });
-  });
-
-  const laneLookup = new Map();
-  const pairSizes  = new Map();
-  pairMap.forEach(indices => {
-    indices.forEach((ri, idx) => {
-      laneLookup.set(ri, idx);
-      pairSizes.set(ri, indices.length);
-    });
-  });
-
-  let html = '';
-
-  currentSchema.refs.forEach((r, i) => {
-    // Bug fix 1: skip if either table is currently hidden
-    const fromEl = document.getElementById('tbl-' + r.from.table);
-    const toEl   = document.getElementById('tbl-' + r.to.table);
-    if (fromEl && fromEl.style.display === 'none') return;
-    if (toEl   && toEl.style.display   === 'none') return;
-
-    const A = getTablePos(r.from.table), B = getTablePos(r.to.table);
-    if (!A || !B || r.from.table === r.to.table) return;
-
-    const ay = A.y + getColY(r.from.table, r.from.col);
-    const by = B.y + getColY(r.to.table,   r.to.col);
-
-    const ac = A.x + A.w / 2, bc = B.x + B.w / 2;
-    let x1 = ac <= bc ? A.x + A.w : A.x;
-    let x2 = ac <= bc ? B.x       : B.x + B.w;
-
-    const laneIdx = laneLookup.get(i) ?? 0;
-    const nLanes  = pairSizes.get(i)  ?? 1;
-    const laneOff = (laneIdx - (nLanes - 1) / 2) * LANE_STEP;
-
-    const edgeKey  = `${r.from.table}.${r.from.col}→${r.to.table}.${r.to.col}`;
-    const autoXmid = findLane(x1, x2, ay, by, r.from.table, r.to.table) + laneOff;
-    const xmid     = edgeCustomMid.has(edgeKey) ? edgeCustomMid.get(edgeKey) : autoXmid;
-
-    if      (xmid >= A.x + A.w) x1 = A.x + A.w;
-    else if (xmid <= A.x)       x1 = A.x;
-    if      (xmid <= B.x)       x2 = B.x;
-    else if (xmid >= B.x + B.w) x2 = B.x + B.w;
-
-    const x1Dir = x1 >= A.x + A.w - 1 ?  1 : -1;
-    const x2Dir = x2 >= B.x + B.w - 1 ?  1 : -1;
-
-    const d = buildPath(x1, ay, xmid, x2, by);
-
-    const fromCard = r.type === '>' ? 'one'  : 'many';
-    const toCard   = r.type === '>' ? 'many' : 'one';
-
-    const stroke = '#94a3b8';
-    const midX = (x1 + x2) / 2, midY = (ay + by) / 2;
-    const isSel = selectedEdge === edgeKey;
-
-    html += `<g class="edge-g${isSel ? ' selected' : ''}"
-        data-from="${esc(r.from.table)}" data-to="${esc(r.to.table)}"
-        data-fromcol="${esc(r.from.col)}" data-tocol="${esc(r.to.col)}"
-        data-edge-key="${esc(edgeKey)}">
-      <path d="${d}" stroke="transparent" stroke-width="12" fill="none"/>
-      <path class="edge-path" d="${d}" stroke="${stroke}" stroke-width="1.5" fill="none"/>
-      ${symbolSVG(x1, ay, fromCard, x1Dir, stroke)}
-      ${symbolSVG(x2, by, toCard,   x2Dir, stroke)}
-      <circle class="edge-handle" cx="${xmid}" cy="${midY}" r="5" data-edge-key="${esc(edgeKey)}"/>
-      <text class="edge-label" x="${midX}" y="${midY - 5}"
-        text-anchor="middle" font-size="10"
-        font-family="Segoe UI,system-ui,sans-serif"
-        fill="#475569" stroke="#f1f5f9" stroke-width="3" paint-order="stroke"
-        >${esc(r.from.col)}</text>
-    </g>`;
-  });
-
-  layer.innerHTML = html;
-  applyFocusToEdges();
-}
-
-/* ══════════════════════════════════════════════
-   STATE & RENDER
-══════════════════════════════════════════════ */
-let currentSchema  = null;
-let tablePositions = {};
-let focusMode      = null;
-let edgeCustomMid  = new Map(); // edgeKey → custom xmid (SVG coords)
-let selectedEdge   = null;
-let edgeDragState  = null;
-let drawMode       = null;      // { type, phase:'from'|'to', from:null|{table,col} }
-let drawType       = '>';       // currently selected draw arrow type
-
-/* ══════════════════════════════════════════════
-   STATE PERSISTENCE — localStorage + URL hash
-══════════════════════════════════════════════ */
-const LS_KEY = 'dbml-diagram-v1';
-
-function encodeState() {
-  const obj = { src: masterSrc, pos: tablePositions, mid: [...edgeCustomMid] };
-  return LZString.compressToEncodedURIComponent(JSON.stringify(obj));
-}
-
-function decodeState(encoded) {
-  try {
-    const obj = JSON.parse(LZString.decompressFromEncodedURIComponent(encoded));
-    return (obj && typeof obj.src === 'string') ? obj : null;
-  } catch { return null; }
-}
-
-function saveToLocalStorage() {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify({
-      src: masterSrc, pos: tablePositions, mid: [...edgeCustomMid]
-    }));
-  } catch {}
-}
-
-function loadSavedState() {
-  // Priority 1: URL hash (shared link)
-  if (location.hash.startsWith('#state=')) {
-    const state = decodeState(location.hash.slice(7));
-    if (state) {
-      history.replaceState(null, '', location.pathname + location.search);
-      return state;
-    }
-  }
-  // Priority 2: localStorage (last session)
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) { const obj = JSON.parse(raw); if (obj && typeof obj.src === 'string') return obj; }
-  } catch {}
-  return null;
-}
-
-function showToast(msg, ms = 2500) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), ms);
-}
-
-function render(schema, resetLayout) {
-  currentSchema = schema;
-
-  if (resetLayout || !Object.keys(tablePositions).length) {
-    tablePositions = computeLayout(schema.tables, schema.refs);
-    edgeCustomMid.clear();
-    selectedEdge = null;
-  } else {
-    const newPos = computeLayout(schema.tables, schema.refs);
-    schema.tables.forEach(t => {
-      if (!tablePositions[t.name]) tablePositions[t.name] = newPos[t.name] || { x: 40, y: 40 };
-    });
-    Object.keys(tablePositions).forEach(n => {
-      if (!schema.tables.find(t => t.name === n)) delete tablePositions[n];
-    });
-  }
-
-  const layer = document.getElementById('tables-layer');
-  layer.innerHTML = schema.tables.map(t => {
-    const p = tablePositions[t.name] || { x: 40, y: 40 };
-    return tableSVG(t, p.x, p.y);
-  }).join('');
-
-  renderEdges();
-  applyFilters();
-  if (focusMode) reapplyFocus();
-
-  const st = document.getElementById('status');
-  st.className = '';
-  st.textContent = `${schema.tables.length} bảng · ${schema.refs.length} quan hệ`;
-}
-
-/* ══════════════════════════════════════════════
-   FILTER TREE STATE
-══════════════════════════════════════════════ */
-let tblHidden     = new Set();  // table names that are hidden
-let colHidden     = new Map();  // tableName → Set<colName>
-let expandedTbls  = new Set();  // table names with expanded column list
-
-/* ══════════════════════════════════════════════
-   FILTER TREE BUILDER
-   Bug fix 3a: tree-view of tables/columns with checkboxes
-══════════════════════════════════════════════ */
-function buildFilterTree() {
-  if (!currentSchema) { document.getElementById('fp-tree').innerHTML = ''; return; }
-
-  const search = ((document.getElementById('fp-search') || {}).value || '').toLowerCase().trim();
-  const COLOR_MAP = { clean: '#3b82f6', dwh: '#10b981' };
-
-  let html = '';
-  currentSchema.tables.forEach(t => {
-    const schema = (t.note || '').split('.')[0].replace(/\\n.*/, '').trim().toLowerCase() || 'other';
-    const color  = COLOR_MAP[schema] || '#f59e0b';
-
-    // Filter tree display by search
-    const tblMatch = !search || t.name.toLowerCase().includes(search);
-    const matchingCols = t.columns.filter(c => !search || tblMatch || c.name.toLowerCase().includes(search));
-    if (search && !tblMatch && matchingCols.length === 0) return;
-
-    const isHidden  = tblHidden.has(t.name);
-    const isOpen    = expandedTbls.has(t.name) || (search && matchingCols.length > 0);
-    const hiddenCols = colHidden.get(t.name) || new Set();
-
-    html += `<div class="tree-tbl" data-name="${esc(t.name)}">
-      <div class="tree-tbl-hdr">
-        <span class="tree-arrow${isOpen ? ' open' : ''}" data-tbl="${esc(t.name)}">▶</span>
-        <input type="checkbox" class="tree-tbl-cb" data-tbl="${esc(t.name)}" ${isHidden ? '' : 'checked'}>
-        <span class="fp-dot" style="background:${color}"></span>
-        <span class="tree-tbl-name" title="${esc(t.name)}">${esc(t.name)}</span>
-      </div>
-      <div class="tree-cols" style="display:${isOpen ? '' : 'none'}">`;
-
-    t.columns.forEach(col => {
-      if (search && !tblMatch && !col.name.toLowerCase().includes(search)) return;
-      const colHide = hiddenCols.has(col.name);
-      html += `<div class="tree-col">
-        <input type="checkbox" class="tree-col-cb"
-          data-tbl="${esc(t.name)}" data-col="${esc(col.name)}" ${colHide ? '' : 'checked'}>
-        <span class="tree-col-name" title="${esc(col.name)}">${esc(col.name)}</span>
-        <span class="tree-col-type">${esc(col.type)}</span>
-      </div>`;
-    });
-
-    html += `</div></div>`;
-  });
-
-  document.getElementById('fp-tree').innerHTML = html;
-
-  // Bind toggle arrows
-  document.querySelectorAll('#fp-tree .tree-arrow').forEach(arrow => {
-    arrow.addEventListener('click', e => {
-      e.stopPropagation();
-      const tbl   = arrow.dataset.tbl;
-      const tblEl = document.querySelector(`#fp-tree .tree-tbl[data-name="${CSS.escape(tbl)}"]`);
-      const cols  = tblEl && tblEl.querySelector('.tree-cols');
-      if (!cols) return;
-      const willOpen = cols.style.display === 'none';
-      cols.style.display = willOpen ? '' : 'none';
-      arrow.classList.toggle('open', willOpen);
-      if (willOpen) expandedTbls.add(tbl); else expandedTbls.delete(tbl);
-    });
-  });
-
-  // Click on header row (not on checkbox) → toggle expand
-  document.querySelectorAll('#fp-tree .tree-tbl-hdr').forEach(hdr => {
-    hdr.addEventListener('click', e => {
-      if (e.target.tagName === 'INPUT') return;
-      const arrow = hdr.querySelector('.tree-arrow');
-      if (arrow) arrow.dispatchEvent(new MouseEvent('click', { bubbles: false }));
-    });
-  });
-
-  // Table checkbox
-  document.querySelectorAll('#fp-tree .tree-tbl-cb').forEach(cb => {
-    cb.addEventListener('change', () => {
-      const tbl = cb.dataset.tbl;
-      if (cb.checked) tblHidden.delete(tbl); else tblHidden.add(tbl);
-      applyFilters();
-      renderEdges();  // re-render edges respecting new visibility
-    });
-  });
-
-  // Column checkbox
-  document.querySelectorAll('#fp-tree .tree-col-cb').forEach(cb => {
-    cb.addEventListener('change', () => {
-      const tbl = cb.dataset.tbl, col = cb.dataset.col;
-      if (!colHidden.has(tbl)) colHidden.set(tbl, new Set());
-      if (cb.checked) colHidden.get(tbl).delete(col); else colHidden.get(tbl).add(col);
-      applyFilters();
-    });
-  });
-}
-
-/* ══════════════════════════════════════════════
-   APPLY FILTERS
-══════════════════════════════════════════════ */
-function applyFilters() {
-  if (!currentSchema) return;
-  const hidePk = document.getElementById('fp-hidepk').checked;
-  const hideFk = document.getElementById('fp-hidefk').checked;
-  const hidePt = document.getElementById('fp-hidept').checked;
-
-  currentSchema.tables.forEach(t => {
-    const el = document.getElementById('tbl-' + t.name);
-    if (!el) return;
-    el.style.display = tblHidden.has(t.name) ? 'none' : '';
-
-    // Build effective hidden-columns set (checkbox + toggle flags)
-    const manualHidden = colHidden.get(t.name) || new Set();
-    const effectiveHidden = new Set(manualHidden);
-    t.columns.forEach(col => {
-      if ((hidePk && col.pk) || (hideFk && col.fk && !col.pk) || (hidePt && col.isPt))
-        effectiveHidden.add(col.name);
-    });
-
-    // Re-render table body so height shrinks and rows have no gaps
-    el.innerHTML = tableBodySVG(t, effectiveHidden);
-  });
-
-  // Edges: hide when either endpoint table is hidden
-  document.querySelectorAll('#edges-layer .edge-g').forEach(g => {
-    const fEl = document.getElementById('tbl-' + g.dataset.from);
-    const tEl = document.getElementById('tbl-' + g.dataset.to);
-    g.style.display = (fEl && fEl.style.display !== 'none' && tEl && tEl.style.display !== 'none') ? '' : 'none';
-  });
-
-  syncEditorFromFilter();
-}
-
-/* ══════════════════════════════════════════════
-   DBML SERIALIZER — schema object → DBML text
-   Used to sync editor when filter changes
-══════════════════════════════════════════════ */
-function schemaToDBML(schema, hiddenTbls, hiddenColsMap, hidePk, hideFk, hidePt) {
-  let out = '';
-  schema.tables.forEach(t => {
-    if (hiddenTbls.has(t.name)) return;
-    const manualHidden = hiddenColsMap.get(t.name) || new Set();
-    const visCols = t.columns.filter(col => {
-      if (manualHidden.has(col.name))      return false;
-      if (hidePk && col.pk)                return false;
-      if (hideFk && col.fk && !col.pk)     return false;
-      if (hidePt && col.isPt)              return false;
-      return true;
-    });
-    const noteAttr = t.note ? ` [note: '${t.note}']` : '';
-    out += `Table ${t.name}${noteAttr} {\n`;
-    visCols.forEach(col => {
-      const attrs = [];
-      if (col.pk) attrs.push('pk');
-      if (col.fk && !hiddenTbls.has(col.fk.table))
-        attrs.push(`ref: > ${col.fk.table}.${col.fk.col}`);
-      if (col.note) attrs.push(`note: '${col.note}'`);
-      const attrStr = attrs.length ? `  [${attrs.join(', ')}]` : '';
-      out += `  ${col.name.padEnd(26)}${col.type}${attrStr}\n`;
-    });
-    out += '}\n\n';
-  });
-  return out.trimEnd();
-}
-
-function syncEditorFromFilter() {
-  if (!currentSchema) return;
-  const hidePk = document.getElementById('fp-hidepk').checked;
-  const hideFk = document.getElementById('fp-hidefk').checked;
-  const hidePt = document.getElementById('fp-hidept').checked;
-  const hasFilter = tblHidden.size > 0 || colHidden.size > 0 || hidePk || hideFk || hidePt;
-
-  let newVal;
-  if (hasFilter) {
-    newVal = schemaToDBML(currentSchema, tblHidden, colHidden, hidePk, hideFk, hidePt);
-  } else {
-    newVal = masterSrc;
-  }
-
-  if (editor.value === newVal) {
-    // No change needed — also ensures we don't reset cursor while user is typing
-    editor.readOnly = hasFilter;
-    editor.style.background = hasFilter ? '#f8fafc' : '';
-    return;
-  }
-
-  editorSyncing = true;
-  editor.value = newVal;
-  editorSyncing = false;
-  editor.readOnly = hasFilter;
-  editor.style.background = hasFilter ? '#f8fafc' : '';
-}
-
-/* ══════════════════════════════════════════════
-   HIGHLIGHT / FOCUS
-══════════════════════════════════════════════ */
-function neighborsOf(name) {
-  const nb = new Set([name]);
-  if (!currentSchema) return nb;
-  currentSchema.refs.forEach(r => {
-    if (r.from.table === name) nb.add(r.to.table);
-    if (r.to.table   === name) nb.add(r.from.table);
-  });
-  return nb;
-}
-
-function setTableFocus(name) {
-  clearFocus(false);
-  focusMode = { type: 'table', name };
-  const nb = neighborsOf(name);
-  document.querySelectorAll('.tbl-group').forEach(g => {
-    g.classList.toggle('dimmed',  !nb.has(g.dataset.name));
-    g.classList.toggle('focused', g.dataset.name === name);
-  });
-  applyFocusToEdges();
-}
-
-function setColumnFocus(tblName, colName) {
-  clearFocus(false);
-  focusMode = { type: 'col', table: tblName, col: colName };
-  const hlCols   = new Set([`${tblName}.${colName}`]);
-  const hlTables = new Set([tblName]);
-  if (currentSchema) {
-    currentSchema.refs.forEach(r => {
-      if (r.from.table === tblName && r.from.col === colName) { hlCols.add(`${r.to.table}.${r.to.col}`); hlTables.add(r.to.table); }
-      if (r.to.table   === tblName && r.to.col   === colName) { hlCols.add(`${r.from.table}.${r.from.col}`); hlTables.add(r.from.table); }
-    });
-  }
-  document.querySelectorAll('.tbl-group').forEach(g => {
-    g.classList.toggle('dimmed',  !hlTables.has(g.dataset.name));
-    g.classList.toggle('focused', g.dataset.name === tblName);
-  });
-  document.querySelectorAll('.col-hl').forEach(el => {
-    el.setAttribute('opacity', hlCols.has(`${el.dataset.table}.${el.dataset.col}`) ? '0.55' : '0');
-  });
-  applyFocusToEdges();
-}
-
-function applyFocusToEdges() {
-  if (!focusMode) return;
-  let hlCols = null, hlTables = null;
-  if (focusMode.type === 'table') {
-    hlTables = neighborsOf(focusMode.name);
-  } else {
-    hlCols   = new Set([`${focusMode.table}.${focusMode.col}`]);
-    hlTables = new Set([focusMode.table]);
-    if (currentSchema) {
-      currentSchema.refs.forEach(r => {
-        if (r.from.table === focusMode.table && r.from.col === focusMode.col) { hlCols.add(`${r.to.table}.${r.to.col}`); hlTables.add(r.to.table); }
-        if (r.to.table   === focusMode.table && r.to.col   === focusMode.col) { hlCols.add(`${r.from.table}.${r.from.col}`); hlTables.add(r.from.table); }
-      });
-    }
-  }
-  document.querySelectorAll('#edges-layer .edge-g').forEach(g => {
-    const show = focusMode.type === 'table'
-      ? hlTables.has(g.dataset.from) && hlTables.has(g.dataset.to)
-      : hlCols.has(`${g.dataset.from}.${g.dataset.fromcol}`) && hlCols.has(`${g.dataset.to}.${g.dataset.tocol}`);
-    g.style.opacity = show ? '1' : '0.04';
-  });
-}
-
-function clearFocus(resetMode = true) {
-  if (resetMode) focusMode = null;
-  document.querySelectorAll('.tbl-group').forEach(g => g.classList.remove('dimmed', 'focused'));
-  document.querySelectorAll('.col-hl').forEach(el => el.setAttribute('opacity', '0'));
-  document.querySelectorAll('#edges-layer .edge-g').forEach(g => g.style.opacity = '1');
-}
-
-function reapplyFocus() {
-  if (!focusMode) return;
-  if (focusMode.type === 'table') setTableFocus(focusMode.name);
-  else setColumnFocus(focusMode.table, focusMode.col);
-}
-
-/* ══════════════════════════════════════════════
-   DBML SYNC — reorder Table blocks by visual position
-   Bug fix 3b: drag → DBML order update
-══════════════════════════════════════════════ */
-function syncDBMLOrder() {
-  const src = editor.value;
-  if (!src.trim() || !currentSchema) return;
-
-  // Strip comments for position detection (replace with spaces to preserve offsets)
-  const cleansed = src
-    .replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length))
-    .replace(/\/\*[\s\S]*?\*\//g, m => ' '.repeat(m.length));
-
-  const blocks = [];
-  const tblRe  = /\bTable\s+(\w+)\b/g;
-  let m;
-  while ((m = tblRe.exec(cleansed)) !== null) {
-    const name = m[1];
-    let i = m.index + m[0].length;
-    while (i < cleansed.length && cleansed[i] !== '{') i++;
-    if (i >= cleansed.length) continue;
-    let depth = 1; i++;
-    const start = m.index;
-    while (i < cleansed.length && depth > 0) {
-      if (cleansed[i] === '{') depth++; else if (cleansed[i] === '}') depth--;
-      i++;
-    }
-    blocks.push({ name, start, end: i });
-  }
-  if (blocks.length < 2) return;
-
-  // Collect non-table text segments (in original order)
-  const byPos = [...blocks].sort((a, b) => a.start - b.start);
-  const nonTable = [];
-  let prev = 0;
-  for (const b of byPos) {
-    const gap = src.slice(prev, b.start).trim();
-    if (gap) nonTable.push(gap);
-    prev = b.end;
-  }
-  const tail = src.slice(prev).trim();
-  if (tail) nonTable.push(tail);
-
-  // Sort table blocks by visual position (x column, then y within column)
-  blocks.sort((a, b) => {
-    const pa = tablePositions[a.name] || { x: 0, y: 0 };
-    const pb = tablePositions[b.name] || { x: 0, y: 0 };
-    const dx = pa.x - pb.x;
-    if (Math.abs(dx) > TBL_W * 1.5) return dx;
-    return pa.y - pb.y;
-  });
-
-  const tableParts = blocks.map(b => src.slice(b.start, b.end).trim());
-  const newSrc = [...nonTable, ...tableParts].filter(Boolean).join('\n\n');
-
-  if (newSrc.trim() !== src.trim()) {
-    editor.value = newSrc;
-    // Do NOT re-render: positions are unchanged, DBML content is identical
-  }
-}
-
-/* ══════════════════════════════════════════════
-   DRAG
-══════════════════════════════════════════════ */
-let dragState = null;
-const tablesLayer = document.getElementById('tables-layer');
-
-tablesLayer.addEventListener('mousedown', e => {
-  if (e.button !== 0) return;
-  const group = e.target.closest('.tbl-group');
-  if (!group) return;
-  e.stopPropagation(); e.preventDefault();
-  const isCol = e.target.classList.contains('col-hit');
-  const isHdr = e.target.classList.contains('tbl-hdr-hit');
-  const pt    = toSVGCoords(e.clientX, e.clientY);
-  const tr    = (group.getAttribute('transform') || '').match(/translate\(([^,]+),([^)]+)\)/);
-  dragState = {
-    group,
-    ox: pt.x - (tr ? parseFloat(tr[1]) : 0),
-    oy: pt.y - (tr ? parseFloat(tr[2]) : 0),
-    startX: e.clientX, startY: e.clientY,
-    moved: false, isCol, isHdr,
-    colTable: e.target.dataset.table, colName: e.target.dataset.col,
-  };
-  group.style.filter = 'drop-shadow(0 8px 20px rgba(0,0,0,.18))';
-});
-
-document.addEventListener('mousemove', e => {
-  if (!dragState) return;
-  if (Math.abs(e.clientX - dragState.startX) > 3 || Math.abs(e.clientY - dragState.startY) > 3)
-    dragState.moved = true;
-  if (!dragState.moved) return;
-  const pt = toSVGCoords(e.clientX, e.clientY);
-  const x = pt.x - dragState.ox, y = pt.y - dragState.oy;
-  dragState.group.setAttribute('transform', `translate(${x},${y})`);
-  tablePositions[dragState.group.dataset.name] = { x, y };
-  renderEdges();
-});
-
-document.addEventListener('mouseup', () => {
-  if (!dragState) return;
-  dragState.group.style.filter = '';
-  if (!dragState.moved) {
-    if (drawMode && dragState.isCol && dragState.colName) {
-      handleDrawClick(dragState.colTable, dragState.colName);
-    } else if (dragState.isCol && dragState.colName) {
-      const same = focusMode && focusMode.type === 'col' &&
-                   focusMode.table === dragState.colTable && focusMode.col === dragState.colName;
-      same ? clearFocus() : setColumnFocus(dragState.colTable, dragState.colName);
-    } else {
-      const name = dragState.group.dataset.name;
-      const same = focusMode && focusMode.type === 'table' && focusMode.name === name;
-      same ? clearFocus() : setTableFocus(name);
-    }
-  } else {
-    // Bug fix 3b: sync DBML table order after drag
-    syncDBMLOrder();
-  }
-  dragState = null;
-});
-
-/* ══════════════════════════════════════════════
-   EDGE INTERACTION — bend handle + click-select
-══════════════════════════════════════════════ */
-document.getElementById('edges-layer').addEventListener('mousedown', e => {
-  if (e.button !== 0) return;
-  const handle = e.target.closest('.edge-handle');
-  if (!handle) return;
-  e.stopPropagation(); e.preventDefault();
-  edgeDragState = { key: handle.dataset.edgeKey };
-});
-
-document.addEventListener('mousemove', e => {
-  if (!edgeDragState) return;
-  const pt = toSVGCoords(e.clientX, e.clientY);
-  edgeCustomMid.set(edgeDragState.key, pt.x);
-  renderEdges();
-});
-
-document.addEventListener('mouseup', () => { if (edgeDragState) edgeDragState = null; });
-
-document.getElementById('edges-layer').addEventListener('click', e => {
-  if (drawMode) return;
-  if (e.target.closest('.edge-handle')) return;
-  const edgeG = e.target.closest('.edge-g');
-  if (!edgeG) { selectedEdge = null; return; }
-  const key = edgeG.dataset.edgeKey;
-  selectedEdge = (selectedEdge === key) ? null : key;
-  renderEdges();
-});
-
-/* ══════════════════════════════════════════════
-   PAN / ZOOM
-══════════════════════════════════════════════ */
-let vt = { x: 40, y: 40, s: 1 };
-
-function applyVT() {
-  document.getElementById('viewport').setAttribute('transform', `translate(${vt.x},${vt.y}) scale(${vt.s})`);
-}
-function toSVGCoords(cx, cy) {
-  const vp  = document.getElementById('viewport');
-  const ctm = vp.getScreenCTM();
-  if (!ctm) return { x: cx, y: cy };
-  const pt = document.getElementById('diagram').createSVGPoint();
-  pt.x = cx; pt.y = cy;
-  return pt.matrixTransform(ctm.inverse());
-}
-
-const svgEl = document.getElementById('diagram');
-svgEl.addEventListener('wheel', e => {
-  e.preventDefault();
-  const f = e.deltaY < 0 ? 1.12 : 1/1.12;
-  const rect = svgEl.getBoundingClientRect();
-  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-  vt.x = mx - (mx - vt.x) * f; vt.y = my - (my - vt.y) * f;
-  vt.s = Math.max(0.1, Math.min(4, vt.s * f));
-  applyVT();
-}, { passive: false });
-
-let panState = null;
-document.getElementById('svg-bg').addEventListener('mousedown', e => {
-  if (e.button !== 0) return;
-  panState = { sx: e.clientX - vt.x, sy: e.clientY - vt.y };
-  svgEl.classList.add('grabbing'); e.preventDefault();
-});
-document.addEventListener('mousemove', e => {
-  if (!panState) return;
-  vt.x = e.clientX - panState.sx; vt.y = e.clientY - panState.sy; applyVT();
-});
-document.addEventListener('mouseup', () => { if (panState) { panState = null; svgEl.classList.remove('grabbing'); } });
-document.getElementById('svg-bg').addEventListener('click', clearFocus);
-
-/* ══════════════════════════════════════════════
-   FIT VIEW
-══════════════════════════════════════════════ */
-function fitView() {
-  if (!currentSchema || !currentSchema.tables.length) return;
-  let mnX = Infinity, mnY = Infinity, mxX = -Infinity, mxY = -Infinity;
-  currentSchema.tables.forEach(t => {
-    const p = tablePositions[t.name]; if (!p) return;
-    const h = HDR_H + t.columns.length * ROW_H + PAD_B;
-    mnX = Math.min(mnX, p.x); mnY = Math.min(mnY, p.y);
-    mxX = Math.max(mxX, p.x + TBL_W); mxY = Math.max(mxY, p.y + h);
-  });
-  const PAD = 60, rect = svgEl.getBoundingClientRect();
-  const s = Math.min(rect.width / (mxX - mnX + PAD*2), rect.height / (mxY - mnY + PAD*2), 1.2);
-  vt.s = s;
-  vt.x = (rect.width  - (mxX - mnX) * s) / 2 - mnX * s;
-  vt.y = (rect.height - (mxY - mnY) * s) / 2 - mnY * s;
-  applyVT();
-}
-
-/* ══════════════════════════════════════════════
-   EXPORT PNG
-══════════════════════════════════════════════ */
-function exportPNG() {
-  const svg  = document.getElementById('diagram');
-  const rect = svg.getBoundingClientRect();
-  const clone = svg.cloneNode(true);
-  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' }));
-  const img = new Image();
-  img.onload = () => {
-    const DPR = 2, canvas = document.createElement('canvas');
-    canvas.width = rect.width * DPR; canvas.height = rect.height * DPR;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(DPR, DPR); ctx.fillStyle = '#f1f5f9'; ctx.fillRect(0, 0, rect.width, rect.height);
-    ctx.drawImage(img, 0, 0, rect.width, rect.height);
-    const a = document.createElement('a'); a.download = 'diagram.png';
-    a.href = canvas.toDataURL('image/png'); a.click(); URL.revokeObjectURL(url);
-  };
-  img.src = url;
-}
-
-/* ══════════════════════════════════════════════
-   TOOLTIP
-══════════════════════════════════════════════ */
-const tooltip = document.getElementById('tooltip');
-svgEl.addEventListener('mousemove', e => {
-  const el = e.target.closest('[data-tip]');
-  if (!el) { tooltip.style.display = 'none'; return; }
-  tooltip.textContent = el.dataset.tip;
-  tooltip.style.display = 'block';
-  tooltip.style.left = (e.clientX + 14) + 'px';
-  tooltip.style.top  = (e.clientY - 6)  + 'px';
-});
-svgEl.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
-
-/* ══════════════════════════════════════════════
-   PANEL RESIZE
-══════════════════════════════════════════════ */
-const divider    = document.getElementById('divider');
-const editorPane = document.getElementById('editor-panel');
-let resizing = false;
-divider.addEventListener('mousedown', e => { resizing = true; divider.classList.add('active'); e.preventDefault(); });
-document.addEventListener('mousemove', e => {
-  if (!resizing) return;
-  const fp  = document.getElementById('filter-panel');
-  const fpW = fp.classList.contains('hidden') ? 0 : 230;
-  editorPane.style.width = Math.max(160, Math.min(600, e.clientX - fpW)) + 'px';
-});
-document.addEventListener('mouseup', () => { if (resizing) { resizing = false; divider.classList.remove('active'); } });
-
-/* ══════════════════════════════════════════════
-   FILTER PANEL TOGGLE & RESET
-══════════════════════════════════════════════ */
-document.getElementById('btn-filter').addEventListener('click', () => {
-  document.getElementById('filter-panel').classList.toggle('hidden');
-  document.getElementById('btn-filter').classList.toggle('active');
-});
-
-document.getElementById('fp-reset').addEventListener('click', () => {
-  tblHidden.clear();
-  colHidden.clear();
-  expandedTbls.clear();
-  document.getElementById('fp-hidepk').checked = false;
-  document.getElementById('fp-hidefk').checked = false;
-  document.getElementById('fp-hidept').checked = false;
-  document.getElementById('fp-search').value = '';
-  buildFilterTree();
-  applyFilters();
-  renderEdges();
-});
-
-document.getElementById('fp-search').addEventListener('input', buildFilterTree);
-['fp-hidepk','fp-hidefk','fp-hidept'].forEach(id =>
-  document.getElementById(id).addEventListener('change', applyFilters)
-);
-
-/* ── Draw mode controls ── */
-document.getElementById('btn-draw').addEventListener('click', () => {
-  if (drawMode) exitDrawMode();
-  else if (currentSchema) enterDrawMode();
-});
-
-document.querySelectorAll('.draw-type-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.draw-type-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    drawType = btn.dataset.type;
-    if (drawMode) drawMode.type = drawType;
-  });
-});
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    if (drawMode) exitDrawMode();
-    else clearFocus();
-  }
-});
-
-/* ── Legend toggle ── */
-document.getElementById('legend-hdr').addEventListener('click', () => {
-  const body    = document.getElementById('legend-body');
-  const toggle  = document.getElementById('legend-toggle');
-  const closed  = body.classList.toggle('collapsed');
-  toggle.textContent = closed ? '▸' : '▾';
-});
-
-/* ══════════════════════════════════════════════
-   DRAW MODE
-══════════════════════════════════════════════ */
-function enterDrawMode() {
-  drawMode = { type: drawType, phase: 'from', from: null };
-  document.getElementById('btn-draw').classList.add('active');
-  const ds = document.getElementById('draw-status');
-  ds.textContent = 'Click vào cột nguồn…';
-  ds.style.display = 'block';
-  document.getElementById('diagram').style.cursor = 'crosshair';
-}
-
-function exitDrawMode() {
-  drawMode = null;
-  document.getElementById('btn-draw').classList.remove('active');
-  document.getElementById('draw-status').style.display = 'none';
-  document.getElementById('diagram').style.cursor = '';
-  document.querySelectorAll('.col-hl').forEach(el => {
-    el.setAttribute('opacity', '0');
-    el.setAttribute('fill', '#dbeafe');
-  });
-}
-
-function handleDrawClick(table, col) {
-  if (!drawMode) return;
-  if (drawMode.phase === 'from') {
-    drawMode.from = { table, col };
-    drawMode.phase = 'to';
-    document.querySelectorAll(`.col-hl[data-table="${CSS.escape(table)}"][data-col="${CSS.escape(col)}"]`)
-      .forEach(el => { el.setAttribute('fill', '#fed7aa'); el.setAttribute('opacity', '0.75'); });
-    document.getElementById('draw-status').textContent = `Từ ${table}.${col} → click cột đích…`;
-  } else {
-    if (drawMode.from.table === table && drawMode.from.col === col) { exitDrawMode(); return; }
-    createManualEdge(drawMode.from, { table, col }, drawMode.type);
-    exitDrawMode();
-  }
-}
-
-function createManualEdge(from, to, type) {
-  if (!currentSchema) return;
-  masterSrc += `\n\nRef: ${from.table}.${from.col} ${type} ${to.table}.${to.col}`;
-  editorSyncing = true;
-  editor.value = masterSrc;
-  editorSyncing = false;
-  update(false);
-}
-
-/* ══════════════════════════════════════════════
-   EDITOR CONTROLLER
-══════════════════════════════════════════════ */
-const editor   = document.getElementById('editor');
-const statusEl = document.getElementById('status');
-let debounce = null;
-let masterSrc    = '';   // full DBML — source of truth; never altered by filter
-let editorSyncing = false; // true while we programmatically set editor.value
-
-function update(resetLayout) {
-  clearTimeout(debounce);
-  debounce = setTimeout(() => {
-    const src = editor.value.trim();
-    if (!src) {
-      document.getElementById('tables-layer').innerHTML = '';
-      document.getElementById('edges-layer').innerHTML  = '';
-      document.getElementById('fp-tree').innerHTML = '';
-      currentSchema = null; tablePositions = {};
-      statusEl.className = ''; statusEl.textContent = '—'; return;
-    }
-    try {
-      const schema = parseDBML(src);
-      render(schema, resetLayout);
-      buildFilterTree();
-      saveToLocalStorage();
-      setTimeout(fitView, 60);
-    } catch (err) {
-      statusEl.className = 'err'; statusEl.textContent = '⚠ ' + err.message;
-    }
-  }, 350);
-}
-
-editor.addEventListener('input', () => {
-  if (editorSyncing) return;
-  masterSrc = editor.value;   // update master only from real user edits
-  update(false);
-});
-document.getElementById('btn-layout').addEventListener('click', () => {
-  tablePositions = {};
-  if (currentSchema) { render(currentSchema, true); setTimeout(fitView, 60); }
-});
-document.getElementById('btn-fit').addEventListener('click', fitView);
-document.getElementById('btn-export').addEventListener('click', exportPNG);
-document.getElementById('btn-clear').addEventListener('click', () => { editor.value = ''; update(true); });
-
-document.getElementById('btn-copy-link').addEventListener('click', () => {
-  if (!currentSchema) { showToast('Chưa có diagram để share.'); return; }
-  const encoded = encodeState();
-  const url = `${location.origin}${location.pathname}#state=${encoded}`;
-  navigator.clipboard.writeText(url)
-    .then(() => showToast('Link đã copy! Paste để chia sẻ.'))
-    .catch(() => {
-      prompt('Copy link bên dưới:', url);
-    });
-});
-
-/* ══════════════════════════════════════════════
-   INIT — load from URL hash / localStorage / default
-══════════════════════════════════════════════ */
-const DEFAULT_DBML = `// GHN Demo — paste nội dung ghn_schema.dbml để dùng đầy đủ
-
-Table so_createddate [note: 'clean.online_core_corev2_shippingorder_createddate'] {
-  order_code           varchar   [pk]
-  dt                   varchar   [note: 'PARTITION — created_date']
-  client_id            bigint    [ref: > dim_client.client_id]
-  pick_warehouse_id    bigint    [ref: > dim_warehouse.warehouse_id]
-  deliver_warehouse_id bigint    [ref: > dim_warehouse.warehouse_id]
-  pick_user            bigint    [ref: > dim_employee.employee_id]
-  deliver_user         bigint    [ref: > dim_employee.employee_id]
-  from_district_id     bigint    [ref: > dim_location_district.district_id]
-  status               varchar
-  end_pick_time        timestamp
-  end_delivery_time    timestamp
-}
-
-Table inside_package_history [note: 'clean.inside_package_history'] {
-  dt                varchar   [note: 'PARTITION']
-  order_code        varchar   [ref: > so_createddate.order_code]
-  package_code      varchar
-  action_name       varchar
-  action_time       timestamp
-  warehouse_id      varchar   [ref: > dim_warehouse.warehouse_id]
-  from_warehouse_id integer   [ref: > dim_warehouse.warehouse_id]
-  trip_code         varchar   [ref: > parsed_transportation_history.trip_code]
-  user_id           varchar   [ref: > dim_employee.employee_id]
-}
-
-Table parsed_transportation_history [note: 'clean.parsed_transportation_history'] {
-  trip_code     varchar   [pk]
-  sort_number   integer
-  warehouse_id  integer   [ref: > dim_warehouse.warehouse_id]
-  trip_status   varchar
-  check_in_at   timestamp
-  check_out_at  timestamp
-}
-
-Table dim_client [note: 'dwh.dim_client'] {
-  client_id   bigint  [pk]
-  client_name varchar
-  client_type varchar
-}
-
-Table dim_warehouse [note: 'dwh.dim_warehouse'] {
-  warehouse_id     bigint  [pk]
-  warehouse_name   varchar
-  warehouse_type   varchar
-  district_id      bigint  [ref: > dim_location_district.district_id]
-  province_id      bigint  [ref: > dim_location_province.province_id]
-}
-
-Table dim_employee [note: 'dwh.dim_employee'] {
-  employee_id   bigint  [pk]
-  warehouse_id  bigint  [ref: > dim_warehouse.warehouse_id]
-  employee_name varchar
-  jobtitle_name varchar
-}
-
-Table dim_location_district [note: 'dwh.dim_location_district'] {
-  district_id   bigint  [pk]
-  district_name varchar
-  province_id   bigint  [ref: > dim_location_province.province_id]
-}
-
-Table dim_location_province [note: 'dwh.dim_location_province'] {
-  province_id   bigint  [pk]
-  province_name varchar
-  region_name   varchar
-}`;
-
-(function initFromState() {
-  const saved = loadSavedState();
-  if (saved) {
-    masterSrc = saved.src;
-    editorSyncing = true; editor.value = masterSrc; editorSyncing = false;
-    if (saved.pos) tablePositions = saved.pos;
-    if (saved.mid) saved.mid.forEach(([k, v]) => edgeCustomMid.set(k, v));
-    update(false); // preserve saved positions, don't re-layout
-  } else {
-    editor.value = DEFAULT_DBML;
-    masterSrc = editor.value;
-    update(true);
-  }
-})();
-</script>
+<script src="js/constants.js"></script>
+<script src="js/parser.js"></script>
+<script src="js/layout.js"></script>
+<script src="js/render.js"></script>
+<script src="js/state.js"></script>
+<script src="js/library.js"></script>
+<script src="js/focus.js"></script>
+<script src="js/suggest.js"></script>
+<script src="js/interact.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/init.js"></script>
 </body>
 </html>
