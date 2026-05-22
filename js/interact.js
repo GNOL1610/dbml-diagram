@@ -178,6 +178,8 @@ document.addEventListener('mousemove', e => {
 document.addEventListener('mouseup', () => { if (panState) { panState = null; svgEl.classList.remove('grabbing'); } });
 document.getElementById('svg-bg').addEventListener('click', clearFocus);
 
+applyVT();
+
 /* ══════════════════════════════════════════════
    FIT VIEW
 ══════════════════════════════════════════════ */
