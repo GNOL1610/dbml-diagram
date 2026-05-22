@@ -12,6 +12,7 @@
   <span id="slot-name-badge" class="slot-name-badge" title="Click để đổi tên" hidden></span>
   <div class="toolbar-sep"></div>
   <button class="btn" id="btn-slots">📁 Phiên</button>
+  <button class="btn primary" id="btn-save-slot" title="Lưu phiên hiện tại (Ctrl+S)">💾 Lưu</button>
   <button class="btn" id="btn-filter">☰ Kho bảng</button>
   <button class="btn active" id="btn-editor" title="Ẩn/Hiện DBML editor">⌨ DBML</button>
   <div class="tb-dropdown-wrap">
@@ -115,8 +116,8 @@
         placeholder="Paste DBML vào đây…"></textarea>
       <div class="ed-footer">
         <button class="btn" id="btn-clear" style="font-size:11px;height:26px;padding:0 10px">✕ Xóa</button>
-        <span class="ed-hint">Ctrl+S để lưu</span>
-        <button class="btn primary" id="btn-save-master" style="font-size:11px;height:26px;padding:0 10px">💾 Lưu</button>
+        <span class="ed-hint">Ctrl+S để apply</span>
+        <button class="btn primary" id="btn-save-master" style="font-size:11px;height:26px;padding:0 10px">↻ Apply</button>
       </div>
     </div>
     <div class="ed-pane hidden" id="ed-canvas-pane">

@@ -168,11 +168,21 @@ let activeTabId = null;
 let _dirty      = false;
 
 function markDirty() {
-  if (!currentSlotId) return;
   if (_dirty) return;
   _dirty = true;
-  const tab = openTabs.find(t => t.id === currentSlotId);
-  if (tab) { tab.dirty = true; _renderTabBar(); }
+  if (currentSlotId) {
+    const tab = openTabs.find(t => t.id === currentSlotId);
+    if (tab) tab.dirty = true;
+  }
+  _renderTabBar();
+  const saveBtn = document.getElementById('btn-save-slot');
+  if (saveBtn) saveBtn.classList.add('dirty');
+}
+
+function _markClean() {
+  _dirty = false;
+  const saveBtn = document.getElementById('btn-save-slot');
+  if (saveBtn) saveBtn.classList.remove('dirty');
 }
 
 function _renderTabBar() {
@@ -212,7 +222,7 @@ function _addOrActivateTab(id, name) {
     openTabs.push({ id, name, dirty: false });
   }
   activeTabId = id;
-  _dirty = false;
+  _markClean();
   const tab = openTabs.find(t => t.id === id);
   if (tab) { tab.name = name; tab.dirty = false; }
   _renderTabBar();
@@ -241,7 +251,7 @@ async function _closeTab(id) {
     } else {
       _resetCanvas();
       currentSlotId = null;
-      _dirty = false;
+      _markClean();
       _renderTabBar();
       openSlotModal();
     }
@@ -262,7 +272,20 @@ function _resetCanvas() {
    SAVE / LOAD
 ══════════════════════════════════════════════ */
 async function saveCurrentSlot() {
+  // If File System Access API is supported but no folder chosen yet → ask user to pick one
+  if (SUPPORTED && !_folderHandle) {
+    try {
+      const h = await window.showDirectoryPicker({ mode: 'readwrite' });
+      await _storeHandle(h);
+    } catch (e) {
+      if (e.name === 'AbortError') return;  // user cancelled
+      showToast('Không thể chọn thư mục: ' + e.message);
+      return;
+    }
+  }
+
   const now = _nowISO();
+  const location = _folderHandle ? `📂 ${_folderHandle.name}` : '🌐 trình duyệt';
 
   if (!currentSlotId) {
     // No active slot — create one
@@ -272,8 +295,11 @@ async function saveCurrentSlot() {
     const idx = await _loadIdx();
     idx.unshift({ id: currentSlotId, name, updatedAt: now, activeCount: activeTables.size });
     await _saveIdx(idx);
+    const data = { ..._payload(), updatedAt: now };
+    if (_folderHandle) await _writeJSON(`slot_${currentSlotId}.json`, data);
+    else _lsSetSlot(currentSlotId, data);
     _addOrActivateTab(currentSlotId, name);
-    showToast('Đã tạo và lưu: ' + name);
+    showToast(`Đã lưu "${name}" → ${location}`);
   } else {
     // Write slot data
     const data = { ..._payload(), updatedAt: now };
@@ -287,11 +313,11 @@ async function saveCurrentSlot() {
     const entry = idx.find(e => e.id === currentSlotId);
     if (entry) { entry.updatedAt = now; entry.activeCount = activeTables.size; await _saveIdx(idx); }
     _updateBadge(idx);
-    showToast('Đã lưu.');
+    showToast(`Đã lưu → ${location}`);
   }
 
   // Mark clean
-  _dirty = false;
+  _markClean();
   const tab = openTabs.find(t => t.id === currentSlotId);
   if (tab) tab.dirty = false;
   _renderTabBar();
@@ -340,7 +366,7 @@ async function deleteSlotById(id) {
         await loadSlotById(openTabs[openTabs.length - 1].id);
       } else {
         _resetCanvas();
-        currentSlotId = null; _dirty = false;
+        currentSlotId = null; _markClean();
         _renderTabBar();
         openSlotModal();
       }
@@ -399,13 +425,17 @@ async function _refreshModal() {
 
 function _renderNoFolder(body) {
   body.innerHTML = `
-    <div class="slot-info-msg">
-      Chưa có thư mục lưu phiên.<br>
-      <span style="color:#64748b;font-size:11px">Dữ liệu sẽ lưu dưới dạng file .json trong folder bạn chọn.</span>
+    <div class="slot-storage-box slot-storage-file">
+      <div class="slot-storage-ttl">💾 Lưu ra file trên máy <span class="slot-badge-rec">Khuyên dùng</span></div>
+      <div class="slot-storage-desc">Dữ liệu lưu dưới dạng <code>slots.json</code> + <code>slot_*.json</code> trong thư mục bạn chọn.<br>Có thể tìm lại bằng File Explorer.</div>
+      <button class="btn primary slot-wide-btn" id="slot-pick-folder" style="margin-top:6px">📁 Chọn thư mục lưu…</button>
     </div>
-    <button class="btn primary slot-wide-btn" id="slot-pick-folder">📁 Chọn thư mục lưu trên máy</button>
     <div class="slot-sep">— hoặc —</div>
-    <button class="btn slot-wide-btn" id="slot-new-nofolder">+ Tạo phiên mới (lưu tạm trình duyệt)</button>`;
+    <div class="slot-storage-box slot-storage-browser">
+      <div class="slot-storage-ttl">🌐 Lưu tạm trong trình duyệt</div>
+      <div class="slot-storage-desc">Dữ liệu nằm trong bộ nhớ Chrome/Edge — <b>không có file thực trên máy</b>. Xoá cache trình duyệt = mất dữ liệu.</div>
+      <button class="btn slot-wide-btn" id="slot-new-nofolder" style="margin-top:6px">+ Tạo phiên mới (lưu tạm)</button>
+    </div>`;
   document.getElementById('slot-pick-folder').addEventListener('click', _onPickFolder);
   document.getElementById('slot-new-nofolder').addEventListener('click', _onNewSession);
 }
@@ -413,11 +443,13 @@ function _renderNoFolder(body) {
 function _renderNeedPerm(body) {
   const name = _folderHandle ? _folderHandle.name : '';
   body.innerHTML = `
-    <div class="slot-folder-tag">📂 ${esc(name)}</div>
-    <div class="slot-info-msg" style="margin-top:0">
-      Cần cấp quyền truy cập lại thư mục này.
+    <div class="slot-reconnect-box">
+      <div class="slot-reconnect-icon">📂</div>
+      <div class="slot-reconnect-name">${esc(name)}</div>
+      <div class="slot-reconnect-hint">Phiên đã lưu của bạn nằm trong thư mục này trên máy tính.<br>
+        Để tìm: mở <b>File Explorer</b> → tìm thư mục tên <b>"${esc(name)}"</b> → thấy các file <code>slots.json</code>, <code>slot_*.json</code>.</div>
+      <button class="btn primary slot-wide-btn" id="slot-reconnect" style="margin-top:10px">🔓 Kết nối lại và xem phiên đã lưu</button>
     </div>
-    <button class="btn primary slot-wide-btn" id="slot-reconnect">🔓 Kết nối lại để tải phiên</button>
     <div class="slot-sep">— hoặc —</div>
     <button class="btn slot-wide-btn" id="slot-pick-new">📁 Chọn thư mục khác</button>
     <button class="btn slot-wide-btn" id="slot-new-nofolder2">+ Tạo phiên mới (lưu tạm trình duyệt)</button>`;
@@ -440,7 +472,18 @@ async function _renderReady(fallbackLS, body) {
 
   let html = '';
   if (folderName) {
-    html += `<div class="slot-folder-tag">📂 ${esc(folderName)}</div>`;
+    html += `
+      <div class="slot-location-bar">
+        <span>💾 File lưu tại thư mục:</span>
+        <span class="slot-folder-tag" style="display:inline-flex;margin:0">📂 ${esc(folderName)}</span>
+        <span class="slot-location-hint">Tìm trong File Explorer bằng tên thư mục này</span>
+      </div>`;
+  } else if (fallbackLS) {
+    html += `
+      <div class="slot-location-bar slot-location-browser">
+        <span>🌐 Dữ liệu lưu trong trình duyệt (không có file thực trên máy)</span>
+        <button class="btn slot-change-btn" id="slot-upgrade-folder" style="font-size:11px;margin-left:auto">📁 Chuyển sang lưu file…</button>
+      </div>`;
   }
   html += `<button class="btn primary slot-wide-btn" id="slot-btn-new">+ Tạo phiên mới</button>`;
 
@@ -466,6 +509,10 @@ async function _renderReady(fallbackLS, body) {
   }
 
   b.innerHTML = html;
+
+  // "upgrade to file" button (only in localStorage mode)
+  const upgradeBtn = b.querySelector('#slot-upgrade-folder');
+  if (upgradeBtn) upgradeBtn.addEventListener('click', _onPickFolder);
 
   document.getElementById('slot-btn-new').addEventListener('click', _onNewSession);
 
@@ -553,6 +600,11 @@ document.getElementById('slot-modal').addEventListener('click', e => {
 
 // Header "Phiên" button
 document.getElementById('btn-slots').addEventListener('click', openSlotModal);
+
+// Header "Lưu" button
+document.getElementById('btn-save-slot').addEventListener('click', () => {
+  saveCurrentSlot().catch(err => showToast('Lỗi khi lưu: ' + err.message));
+});
 
 // Badge click → rename current slot
 document.getElementById('slot-name-badge').addEventListener('click', async () => {
