@@ -84,14 +84,8 @@ function decodeState(encoded) {
 
 function saveToLocalStorage() {
   try {
-    if (typeof saveCurrentSlot === 'function') { saveCurrentSlot(); return; }
-    // Fallback (before slots.js loads)
-    const colHiddenObj = {};
-    colHidden.forEach((cols, tbl) => { if (cols.size > 0) colHiddenObj[tbl] = [...cols]; });
-    localStorage.setItem(LS_KEY, JSON.stringify({
-      src: masterSrc, pos: tablePositions, mid: [...edgeCustomMid],
-      active: [...activeTables], colHidden: colHiddenObj, hiddenRefs: [...hiddenRefs]
-    }));
+    if (typeof markDirty === 'function') { markDirty(); return; }
+    // No-op before slots.js loads — explicit save only
   } catch {}
 }
 

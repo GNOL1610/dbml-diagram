@@ -1,31 +1,140 @@
 'use strict';
 
 /* ══════════════════════════════════════════════
-   SAVE SLOTS — named sessions, stored in localStorage
-   Each slot: { id, name, updatedAt, activeCount }
-   Slot data: { src, pos, mid, active, colHidden, hiddenRefs, updatedAt }
+   SAVE SLOTS — File System Access API + Tab Bar
+
+   Dữ liệu lưu dưới dạng file .json trong folder
+   do user chọn.
+
+   Folder structure on disk:
+     [folder]/slots.json          ← index (danh sách phiên)
+     [folder]/slot_<id>.json      ← dữ liệu từng phiên
+
+   Tab bar: mỗi phiên đang mở hiện thị dưới dạng
+   tab. Lưu là EXPLICIT — chỉ khi Ctrl+S hoặc
+   click nút lưu. Dấu ● trên tab = chưa lưu.
+
+   Fallback: localStorage nếu trình duyệt không
+   hỗ trợ File System Access API.
 ══════════════════════════════════════════════ */
-const SLOTS_IDX = 'dbml_slots_v1';
-const SLOT_PFX  = 'dbml_slot_v1_';
+
+const SUPPORTED = typeof window.showDirectoryPicker === 'function';
+
+/* ── IndexedDB helpers ── */
+const IDB_DB    = 'dbml-diagram-idb';
+const IDB_STORE = 'kv';
+
+function _idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(IDB_DB, 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
+    r.onsuccess  = e => res(e.target.result);
+    r.onerror    = () => rej();
+  });
+}
+async function _idbGet(key) {
+  try {
+    const db = await _idbOpen();
+    return new Promise(res => {
+      const tx  = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(key);
+      req.onsuccess = () => res(req.result ?? null);
+      req.onerror   = () => res(null);
+    });
+  } catch { return null; }
+}
+async function _idbSet(key, val) {
+  try {
+    const db = await _idbOpen();
+    return new Promise(res => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(val, key);
+      tx.oncomplete = () => res();
+      tx.onerror    = () => res();
+    });
+  } catch {}
+}
+async function _idbDel(key) {
+  try {
+    const db = await _idbOpen();
+    return new Promise(res => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(key);
+      tx.oncomplete = () => res();
+      tx.onerror    = () => res();
+    });
+  } catch {}
+}
+
+/* ── Folder handle ── */
+let _folderHandle = null;
+
+async function _loadStoredHandle() {
+  _folderHandle = await _idbGet('folder-handle');
+}
+async function _storeHandle(h) {
+  _folderHandle = h;
+  await _idbSet('folder-handle', h);
+}
+async function _clearHandle() {
+  _folderHandle = null;
+  await _idbDel('folder-handle');
+}
+
+async function _checkPermission() {
+  if (!_folderHandle) return 'none';
+  try {
+    return await _folderHandle.queryPermission({ mode: 'readwrite' });
+  } catch { return 'none'; }
+}
+async function _requestPermission() {
+  if (!_folderHandle) return false;
+  try {
+    const r = await _folderHandle.requestPermission({ mode: 'readwrite' });
+    return r === 'granted';
+  } catch { return false; }
+}
+
+/* ── File read/write ── */
+async function _readJSON(filename) {
+  try {
+    const fh   = await _folderHandle.getFileHandle(filename);
+    const file = await fh.getFile();
+    return JSON.parse(await file.text());
+  } catch { return null; }
+}
+async function _writeJSON(filename, data) {
+  const fh       = await _folderHandle.getFileHandle(filename, { create: true });
+  const writable = await fh.createWritable();
+  await writable.write(JSON.stringify(data, null, 2));
+  await writable.close();
+}
+async function _deleteFile(filename) {
+  try { await _folderHandle.removeEntry(filename); } catch {}
+}
+
+/* ── Slot index (slots.json) ── */
+async function _loadIdx() {
+  if (!_folderHandle) return _lsGetIdx();
+  return (await _readJSON('slots.json')) || [];
+}
+async function _saveIdx(idx) {
+  if (!_folderHandle) { _lsSetIdx(idx); return; }
+  await _writeJSON('slots.json', idx);
+}
+
+/* ── LocalStorage fallback ── */
+const LS_IDX = 'dbml_slots_v1';
+const LS_PFX = 'dbml_slot_v1_';
+function _lsGetIdx()       { try { return JSON.parse(localStorage.getItem(LS_IDX)) || []; } catch { return []; } }
+function _lsSetIdx(idx)    { localStorage.setItem(LS_IDX, JSON.stringify(idx)); }
+function _lsGetSlot(id)    { try { return JSON.parse(localStorage.getItem(LS_PFX + id)); } catch { return null; } }
+function _lsSetSlot(id, d) { localStorage.setItem(LS_PFX + id, JSON.stringify(d)); }
+function _lsDelSlot(id)    { localStorage.removeItem(LS_PFX + id); }
+
+/* ── State payload helpers ── */
 let currentSlotId = null;
 
-/* ── Helpers ── */
-function slotsIndex() {
-  try { return JSON.parse(localStorage.getItem(SLOTS_IDX)) || []; }
-  catch { return []; }
-}
-function _saveIdx(idx) { localStorage.setItem(SLOTS_IDX, JSON.stringify(idx)); }
-function _genId()  { return Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
-function _nowISO() { return new Date().toISOString(); }
-function _fmtDate(iso) {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
-      + ' ' + d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-  } catch { return ''; }
-}
-
-/* ── Payload from current state ── */
 function _payload() {
   const ch = {};
   colHidden.forEach((cols, tbl) => { if (cols.size) ch[tbl] = [...cols]; });
@@ -38,32 +147,165 @@ function _payload() {
     hiddenRefs: [...hiddenRefs]
   };
 }
+function _genId()  { return Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+function _nowISO() { return new Date().toISOString(); }
+function _fmtDate(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+         + ' ' + d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  } catch { return ''; }
+}
 
-/* ── Save current slot ── */
-function saveCurrentSlot() {
+/* ══════════════════════════════════════════════
+   TAB BAR
+   openTabs: [{id, name, dirty}]
+   activeTabId: id của tab đang active
+   _dirty: canvas hiện tại có thay đổi chưa lưu
+══════════════════════════════════════════════ */
+let openTabs    = [];
+let activeTabId = null;
+let _dirty      = false;
+
+function markDirty() {
+  if (!currentSlotId) return;
+  if (_dirty) return;
+  _dirty = true;
+  const tab = openTabs.find(t => t.id === currentSlotId);
+  if (tab) { tab.dirty = true; _renderTabBar(); }
+}
+
+function _renderTabBar() {
+  const bar = document.getElementById('slot-tab-bar');
+  if (!bar) return;
+  if (!openTabs.length) { bar.innerHTML = ''; return; }
+
+  let html = openTabs.map(t => `
+    <div class="slot-tab${t.id === activeTabId ? ' active' : ''}" data-tab-id="${esc(t.id)}">
+      <span class="slot-tab-name">${esc(t.name)}</span>
+      ${t.dirty ? '<span class="slot-tab-dirty" title="Chưa lưu">●</span>' : ''}
+      <button class="slot-tab-close" data-close-id="${esc(t.id)}" title="Đóng tab">×</button>
+    </div>`).join('');
+  html += `<button class="slot-tab-add" id="slot-tab-add-btn" title="Mở / tạo phiên mới">+</button>`;
+
+  bar.innerHTML = html;
+
+  bar.querySelectorAll('.slot-tab').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('.slot-tab-close')) return;
+      _switchToTab(el.dataset.tabId);
+    });
+  });
+  bar.querySelectorAll('.slot-tab-close').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      _closeTab(btn.dataset.closeId);
+    });
+  });
+  const addBtn = bar.querySelector('#slot-tab-add-btn');
+  if (addBtn) addBtn.addEventListener('click', openSlotModal);
+}
+
+function _addOrActivateTab(id, name) {
+  const existing = openTabs.find(t => t.id === id);
+  if (!existing) {
+    openTabs.push({ id, name, dirty: false });
+  }
+  activeTabId = id;
+  _dirty = false;
+  const tab = openTabs.find(t => t.id === id);
+  if (tab) { tab.name = name; tab.dirty = false; }
+  _renderTabBar();
+}
+
+async function _switchToTab(id) {
+  if (id === activeTabId) return;
+  if (_dirty) {
+    const ok = confirm('Phiên hiện tại có thay đổi chưa lưu.\nLưu trước khi chuyển tab?');
+    if (ok) await saveCurrentSlot();
+    // cancel = false: discard and switch anyway
+  }
+  await loadSlotById(id);
+}
+
+async function _closeTab(id) {
+  const tab = openTabs.find(t => t.id === id);
+  if (tab && tab.dirty && id === activeTabId) {
+    if (!confirm('Phiên này có thay đổi chưa lưu. Đóng mà không lưu?')) return;
+  }
+  openTabs = openTabs.filter(t => t.id !== id);
+  if (id === activeTabId) {
+    activeTabId = null;
+    if (openTabs.length) {
+      await loadSlotById(openTabs[openTabs.length - 1].id);
+    } else {
+      _resetCanvas();
+      currentSlotId = null;
+      _dirty = false;
+      _renderTabBar();
+      openSlotModal();
+    }
+  } else {
+    _renderTabBar();
+  }
+}
+
+function _resetCanvas() {
+  masterSrc = ''; editor.value = '';
+  activeTables.clear(); tablePositions = {};
+  edgeCustomMid.clear(); hiddenRefs.clear(); colHidden.clear();
+  update(false);
+  _updateBadge(null);
+}
+
+/* ══════════════════════════════════════════════
+   SAVE / LOAD
+══════════════════════════════════════════════ */
+async function saveCurrentSlot() {
+  const now = _nowISO();
+
   if (!currentSlotId) {
-    // Auto-create on first save
+    // No active slot — create one
     const name = 'Phiên ' + new Date().toLocaleDateString('vi-VN') + ' '
                + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     currentSlotId = _genId();
-    _saveIdx([{ id: currentSlotId, name, updatedAt: _nowISO(), activeCount: activeTables.size },
-              ...slotsIndex()]);
-    showToast('Đã tạo phiên: ' + name);
+    const idx = await _loadIdx();
+    idx.unshift({ id: currentSlotId, name, updatedAt: now, activeCount: activeTables.size });
+    await _saveIdx(idx);
+    _addOrActivateTab(currentSlotId, name);
+    showToast('Đã tạo và lưu: ' + name);
+  } else {
+    // Write slot data
+    const data = { ..._payload(), updatedAt: now };
+    if (_folderHandle) {
+      await _writeJSON(`slot_${currentSlotId}.json`, data);
+    } else {
+      _lsSetSlot(currentSlotId, data);
+    }
+    // Update index
+    const idx = await _loadIdx();
+    const entry = idx.find(e => e.id === currentSlotId);
+    if (entry) { entry.updatedAt = now; entry.activeCount = activeTables.size; await _saveIdx(idx); }
+    _updateBadge(idx);
+    showToast('Đã lưu.');
   }
-  const now = _nowISO();
-  const data = { ..._payload(), updatedAt: now };
-  localStorage.setItem(SLOT_PFX + currentSlotId, JSON.stringify(data));
-  const idx = slotsIndex();
-  const entry = idx.find(e => e.id === currentSlotId);
-  if (entry) { entry.updatedAt = now; entry.activeCount = activeTables.size; _saveIdx(idx); }
-  _updateBadge();
+
+  // Mark clean
+  _dirty = false;
+  const tab = openTabs.find(t => t.id === currentSlotId);
+  if (tab) tab.dirty = false;
+  _renderTabBar();
 }
 
-/* ── Load a slot ── */
-function loadSlotById(id) {
-  const raw = localStorage.getItem(SLOT_PFX + id);
-  if (!raw) { showToast('Phiên không tìm thấy.'); return; }
-  const data = JSON.parse(raw);
+async function loadSlotById(id) {
+  let data;
+  if (_folderHandle) {
+    data = await _readJSON(`slot_${id}.json`);
+  } else {
+    data = _lsGetSlot(id);
+  }
+  if (!data) { showToast('Không tìm thấy dữ liệu phiên.'); return; }
+
   currentSlotId   = id;
   masterSrc       = data.src || '';
   editor.value    = masterSrc;
@@ -72,129 +314,270 @@ function loadSlotById(id) {
   activeTables    = new Set(data.active || []);
   colHidden.clear();
   Object.entries(data.colHidden || {}).forEach(([t, c]) => colHidden.set(t, new Set(c)));
-  hiddenRefs = new Set(data.hiddenRefs || []);
-  _updateBadge();
+  hiddenRefs      = new Set(data.hiddenRefs || []);
+
+  const idx = await _loadIdx();
+  const entry = idx.find(e => e.id === id);
+  _addOrActivateTab(id, entry ? entry.name : id);
+  _updateBadge(idx);
   update(false);
   if (activeTables.size > 0) setTimeout(fitView, 80);
 }
 
-/* ── Delete a slot ── */
-function _deleteSlot(id) {
-  localStorage.removeItem(SLOT_PFX + id);
-  _saveIdx(slotsIndex().filter(e => e.id !== id));
+async function deleteSlotById(id) {
+  if (_folderHandle) {
+    await _deleteFile(`slot_${id}.json`);
+  } else {
+    _lsDelSlot(id);
+  }
+  await _saveIdx((await _loadIdx()).filter(e => e.id !== id));
+  // Close tab if open
+  if (openTabs.find(t => t.id === id)) {
+    openTabs = openTabs.filter(t => t.id !== id);
+    if (id === activeTabId) {
+      activeTabId = null;
+      if (openTabs.length) {
+        await loadSlotById(openTabs[openTabs.length - 1].id);
+      } else {
+        _resetCanvas();
+        currentSlotId = null; _dirty = false;
+        _renderTabBar();
+        openSlotModal();
+      }
+    } else {
+      _renderTabBar();
+    }
+  }
 }
 
 /* ── Header badge ── */
-function _updateBadge() {
+function _updateBadge(idx) {
   const el = document.getElementById('slot-name-badge');
   if (!el) return;
-  if (!currentSlotId) { el.textContent = ''; el.hidden = true; return; }
-  const entry = slotsIndex().find(e => e.id === currentSlotId);
+  if (!currentSlotId || !idx) { el.textContent = ''; el.hidden = true; return; }
+  const entry = idx.find(e => e.id === currentSlotId);
   el.textContent = entry ? '📄 ' + entry.name : '';
-  el.hidden = false;
+  el.hidden = !entry;
 }
 
 /* ══════════════════════════════════════════════
    MODAL
+   4 trạng thái:
+   'no-support'  — trình duyệt không hỗ trợ API
+   'no-folder'   — chưa chọn folder
+   'need-perm'   — folder đã lưu, cần cấp lại quyền
+   'ready'       — folder sẵn sàng
 ══════════════════════════════════════════════ */
 function openSlotModal() {
-  _renderList();
   document.getElementById('slot-modal').classList.remove('hidden');
+  _refreshModal();
 }
 function closeSlotModal() {
   document.getElementById('slot-modal').classList.add('hidden');
 }
 
-function _renderList() {
-  const idx  = slotsIndex();
-  const list = document.getElementById('slot-list');
-  const sep  = document.getElementById('slot-sep');
-  if (!idx.length) {
-    sep.hidden = true;
-    list.innerHTML = '';
+async function _refreshModal() {
+  const body = document.getElementById('slot-modal-body');
+  body.innerHTML = '<div class="slot-loading">Đang kiểm tra…</div>';
+
+  if (!SUPPORTED) {
+    await _renderReady(true, body);
     return;
   }
-  sep.hidden = false;
-  list.innerHTML = idx.map(e => `
-    <div class="slot-item">
-      <div class="slot-item-info">
-        <div class="slot-item-name">${esc(e.name)}</div>
-        <div class="slot-item-meta">${e.activeCount || 0} bảng · ${_fmtDate(e.updatedAt)}</div>
-      </div>
-      <div class="slot-item-btns">
-        <button class="btn primary slot-open-btn" data-id="${esc(e.id)}">Mở</button>
-        <button class="btn slot-del-btn" data-id="${esc(e.id)}" title="Xóa phiên">✕</button>
-      </div>
-    </div>`).join('');
 
-  list.querySelectorAll('.slot-open-btn').forEach(b =>
-    b.addEventListener('click', () => { loadSlotById(b.dataset.id); closeSlotModal(); }));
+  await _loadStoredHandle();
+  const perm = await _checkPermission();
 
-  list.querySelectorAll('.slot-del-btn').forEach(b =>
-    b.addEventListener('click', ev => {
-      ev.stopPropagation();
-      const name = (slotsIndex().find(x => x.id === b.dataset.id) || {}).name || '';
-      if (!confirm('Xóa phiên "' + name + '"?')) return;
-      _deleteSlot(b.dataset.id);
-      _renderList();
-    }));
+  if (perm === 'none') {
+    _renderNoFolder(body);
+  } else if (perm === 'granted') {
+    await _renderReady(false, body);
+  } else {
+    _renderNeedPerm(body);
+  }
 }
 
-/* ── Migrate old single-key save (dbml-diagram-v5) ── */
-function _migrateOldSave() {
-  if (slotsIndex().length) return; // already have slots
-  const OLD_KEY = 'dbml-diagram-v5';
+function _renderNoFolder(body) {
+  body.innerHTML = `
+    <div class="slot-info-msg">
+      Chưa có thư mục lưu phiên.<br>
+      <span style="color:#64748b;font-size:11px">Dữ liệu sẽ lưu dưới dạng file .json trong folder bạn chọn.</span>
+    </div>
+    <button class="btn primary slot-wide-btn" id="slot-pick-folder">📁 Chọn thư mục lưu trên máy</button>
+    <div class="slot-sep">— hoặc —</div>
+    <button class="btn slot-wide-btn" id="slot-new-nofolder">+ Tạo phiên mới (lưu tạm trình duyệt)</button>`;
+  document.getElementById('slot-pick-folder').addEventListener('click', _onPickFolder);
+  document.getElementById('slot-new-nofolder').addEventListener('click', _onNewSession);
+}
+
+function _renderNeedPerm(body) {
+  const name = _folderHandle ? _folderHandle.name : '';
+  body.innerHTML = `
+    <div class="slot-folder-tag">📂 ${esc(name)}</div>
+    <div class="slot-info-msg" style="margin-top:0">
+      Cần cấp quyền truy cập lại thư mục này.
+    </div>
+    <button class="btn primary slot-wide-btn" id="slot-reconnect">🔓 Kết nối lại để tải phiên</button>
+    <div class="slot-sep">— hoặc —</div>
+    <button class="btn slot-wide-btn" id="slot-pick-new">📁 Chọn thư mục khác</button>
+    <button class="btn slot-wide-btn" id="slot-new-nofolder2">+ Tạo phiên mới (lưu tạm trình duyệt)</button>`;
+  document.getElementById('slot-reconnect').addEventListener('click', async () => {
+    const ok = await _requestPermission();
+    if (ok) {
+      await _renderReady(false);
+    } else {
+      showToast('Không được cấp quyền.');
+    }
+  });
+  document.getElementById('slot-pick-new').addEventListener('click', _onPickFolder);
+  document.getElementById('slot-new-nofolder2').addEventListener('click', _onNewSession);
+}
+
+async function _renderReady(fallbackLS, body) {
+  const b = body || document.getElementById('slot-modal-body');
+  const idx = await _loadIdx();
+  const folderName = (!fallbackLS && _folderHandle) ? _folderHandle.name : null;
+
+  let html = '';
+  if (folderName) {
+    html += `<div class="slot-folder-tag">📂 ${esc(folderName)}</div>`;
+  }
+  html += `<button class="btn primary slot-wide-btn" id="slot-btn-new">+ Tạo phiên mới</button>`;
+
+  if (idx.length) {
+    html += `<div class="slot-sep">— Phiên đã lưu —</div>`;
+    html += idx.map(e => `
+      <div class="slot-item${e.id === activeTabId ? ' slot-item-active' : ''}">
+        <div class="slot-item-info">
+          <div class="slot-item-name">${esc(e.name)}</div>
+          <div class="slot-item-meta">${e.activeCount || 0} bảng · ${_fmtDate(e.updatedAt)}</div>
+        </div>
+        <div class="slot-item-btns">
+          <button class="btn primary slot-open-btn" data-id="${esc(e.id)}">${e.id === activeTabId ? '✓ Đang mở' : 'Mở'}</button>
+          <button class="btn slot-del-btn" data-id="${esc(e.id)}" title="Xóa phiên">✕</button>
+        </div>
+      </div>`).join('');
+  } else {
+    html += `<div class="slot-empty">Chưa có phiên nào. Nhấn "+ Tạo phiên mới" để bắt đầu.</div>`;
+  }
+
+  if (!fallbackLS) {
+    html += `<div class="slot-change-folder-row"><button class="btn slot-change-btn" id="slot-change-folder">📁 Đổi thư mục</button></div>`;
+  }
+
+  b.innerHTML = html;
+
+  document.getElementById('slot-btn-new').addEventListener('click', _onNewSession);
+
+  b.querySelectorAll('.slot-open-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+      if (btn.dataset.id === activeTabId) { closeSlotModal(); return; }
+      loadSlotById(btn.dataset.id);
+      closeSlotModal();
+    }));
+
+  b.querySelectorAll('.slot-del-btn').forEach(btn =>
+    btn.addEventListener('click', async ev => {
+      ev.stopPropagation();
+      const entry = (await _loadIdx()).find(e => e.id === btn.dataset.id);
+      if (!confirm('Xóa phiên "' + (entry ? entry.name : '') + '"?')) return;
+      await deleteSlotById(btn.dataset.id);
+      if (!document.getElementById('slot-modal').classList.contains('hidden'))
+        await _renderReady(fallbackLS);
+    }));
+
+  const chBtn = b.querySelector('#slot-change-folder');
+  if (chBtn) chBtn.addEventListener('click', _onPickFolder);
+}
+
+async function _onPickFolder() {
   try {
-    const raw = localStorage.getItem(OLD_KEY);
+    const h = await window.showDirectoryPicker({ mode: 'readwrite' });
+    await _storeHandle(h);
+    await _renderReady(false);
+  } catch (e) {
+    if (e.name !== 'AbortError') showToast('Không thể chọn thư mục: ' + e.message);
+  }
+}
+
+async function _onNewSession() {
+  const name = 'Phiên ' + new Date().toLocaleDateString('vi-VN') + ' '
+             + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  currentSlotId = _genId();
+  const idx = await _loadIdx();
+  idx.unshift({ id: currentSlotId, name, updatedAt: _nowISO(), activeCount: 0 });
+  await _saveIdx(idx);
+  // Write empty slot file so it persists on reload
+  const data = { src: '', pos: {}, mid: [], active: [], colHidden: {}, hiddenRefs: [], updatedAt: _nowISO() };
+  if (_folderHandle) await _writeJSON(`slot_${currentSlotId}.json`, data);
+  else _lsSetSlot(currentSlotId, data);
+  // Reset canvas
+  masterSrc = ''; editor.value = '';
+  activeTables.clear(); tablePositions = {};
+  edgeCustomMid.clear(); hiddenRefs.clear(); colHidden.clear();
+  update(false);
+  _addOrActivateTab(currentSlotId, name);
+  _updateBadge(idx);
+  closeSlotModal();
+}
+
+/* ── Migrate old single-key localStorage save ── */
+async function _migrateOldSave() {
+  const OLD = 'dbml-diagram-v5';
+  if (SUPPORTED && _folderHandle) return;
+  const hasSlots = _lsGetIdx().length > 0;
+  if (hasSlots) return;
+  try {
+    const raw = localStorage.getItem(OLD);
     if (!raw) return;
     const obj = JSON.parse(raw);
     if (!obj || !obj.src) return;
-    const id   = _genId();
-    const name = 'Phiên đã lưu trước đây';
-    const idx  = [{ id, name, updatedAt: _nowISO(), activeCount: (obj.active || []).length }];
-    _saveIdx(idx);
-    localStorage.setItem(SLOT_PFX + id, JSON.stringify({ ...obj, updatedAt: _nowISO() }));
-    localStorage.removeItem(OLD_KEY);
+    const id  = _genId();
+    const now = _nowISO();
+    _lsSetIdx([{ id, name: 'Phiên đã lưu trước đây', updatedAt: now, activeCount: (obj.active || []).length }]);
+    _lsSetSlot(id, { ...obj, updatedAt: now });
+    localStorage.removeItem(OLD);
   } catch {}
 }
 
 /* ── Wire up events ── */
 
-// "+ Phiên mới" button in modal
-document.getElementById('slot-btn-new').addEventListener('click', () => {
-  const name = 'Phiên ' + new Date().toLocaleDateString('vi-VN') + ' '
-             + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-  currentSlotId = _genId();
-  _saveIdx([{ id: currentSlotId, name, updatedAt: _nowISO(), activeCount: 0 },
-            ...slotsIndex()]);
-  masterSrc = ''; editor.value = '';
-  activeTables.clear(); tablePositions = {};
-  edgeCustomMid.clear(); hiddenRefs.clear(); colHidden.clear();
-  update(false);
-  _updateBadge();
-  closeSlotModal();
-});
-
-// "📁 Phiên" button in header
-document.getElementById('btn-slots').addEventListener('click', openSlotModal);
-
-// Click overlay to close
-document.getElementById('slot-modal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeSlotModal();
-});
-
-// Escape key
+// Escape / overlay click closes modal
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !document.getElementById('slot-modal').classList.contains('hidden'))
     closeSlotModal();
 });
+document.getElementById('slot-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeSlotModal();
+});
 
-// Click badge to rename current slot
-document.getElementById('slot-name-badge').addEventListener('click', () => {
+// Header "Phiên" button
+document.getElementById('btn-slots').addEventListener('click', openSlotModal);
+
+// Badge click → rename current slot
+document.getElementById('slot-name-badge').addEventListener('click', async () => {
   if (!currentSlotId) return;
-  const idx   = slotsIndex();
+  const idx   = await _loadIdx();
   const entry = idx.find(e => e.id === currentSlotId);
   if (!entry) return;
   const n = prompt('Tên phiên:', entry.name);
-  if (n && n.trim()) { entry.name = n.trim(); _saveIdx(idx); _updateBadge(); }
+  if (n && n.trim()) {
+    entry.name = n.trim();
+    await _saveIdx(idx);
+    _updateBadge(idx);
+    const tab = openTabs.find(t => t.id === currentSlotId);
+    if (tab) { tab.name = entry.name; _renderTabBar(); }
+  }
+});
+
+// DBML textarea input → mark dirty
+editor.addEventListener('input', () => { if (currentSlotId) markDirty(); });
+
+// Ctrl+S → explicit save (document-level, fires alongside editor.js handler)
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === 's') {
+    // editor.js already calls e.preventDefault() and saveMaster()
+    // We just trigger the disk save here
+    saveCurrentSlot().catch(err => showToast('Lỗi khi lưu: ' + err.message));
+  }
 });

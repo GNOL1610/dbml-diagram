@@ -24,7 +24,6 @@ function update(resetLayout) {
     try {
       const schema = parseDBML(src);
       render(schema, resetLayout);
-      saveToLocalStorage();
       if (resetLayout && activeTables.size > 0) setTimeout(fitView, 60);
     } catch (err) {
       statusEl.className = 'err'; statusEl.textContent = '⚠ ' + err.message;
