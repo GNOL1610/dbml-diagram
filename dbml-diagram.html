@@ -9,7 +9,9 @@
 
 <header>
   <span class="title">DBML Diagram</span>
+  <span id="slot-name-badge" class="slot-name-badge" title="Click để đổi tên" hidden></span>
   <div class="toolbar-sep"></div>
+  <button class="btn" id="btn-slots">📁 Phiên</button>
   <button class="btn" id="btn-filter">☰ Kho bảng</button>
   <button class="btn active" id="btn-editor" title="Ẩn/Hiện DBML editor">⌨ DBML</button>
   <div class="tb-dropdown-wrap">
@@ -249,6 +251,18 @@
 <div id="tooltip"></div>
 <div id="toast"></div>
 
+<!-- SLOT PICKER MODAL -->
+<div id="slot-modal" class="slot-modal-overlay hidden">
+  <div class="slot-modal">
+    <div class="slot-modal-hdr">📁 Phiên làm việc</div>
+    <div class="slot-modal-body">
+      <button class="btn primary slot-btn-new-full" id="slot-btn-new">+ Tạo phiên mới (canvas trắng)</button>
+      <div class="slot-sep" id="slot-sep">— Phiên đã lưu —</div>
+      <div id="slot-list"></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 <script src="js/constants.js"></script>
@@ -261,6 +275,7 @@
 <script src="js/suggest.js"></script>
 <script src="js/interact.js"></script>
 <script src="js/editor.js"></script>
+<script src="js/slots.js"></script>
 <script src="js/init.js"></script>
 </body>
 </html>

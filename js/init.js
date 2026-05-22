@@ -11,23 +11,25 @@ const DEFAULT_DBML = `// Paste nội dung DBML vào đây rồi nhấn Ctrl+Ente
    INIT
 ══════════════════════════════════════════════ */
 (function initFromState() {
-  const saved = loadSavedState();
-  if (saved) {
-    masterSrc = saved.src;
-    editor.value = masterSrc;
-    if (saved.pos)    tablePositions = saved.pos;
-    if (saved.mid)    saved.mid.forEach(([k, v]) => edgeCustomMid.set(k, v));
-    if (saved.active) saved.active.forEach(n => activeTables.add(n));
-    if (saved.colHidden) {
-      Object.entries(saved.colHidden).forEach(([tbl, cols]) => {
-        colHidden.set(tbl, new Set(cols));
-      });
+  // URL state (share link) — load directly, skip modal
+  if (location.hash.startsWith('#state=')) {
+    const state = decodeState(location.hash.slice(7));
+    if (state) {
+      history.replaceState(null, '', location.pathname + location.search);
+      masterSrc = state.src; editor.value = masterSrc;
+      if (state.pos)       tablePositions = state.pos;
+      if (state.mid)       state.mid.forEach(([k, v]) => edgeCustomMid.set(k, v));
+      if (state.active)    state.active.forEach(n => activeTables.add(n));
+      if (state.colHidden) Object.entries(state.colHidden).forEach(([t, c]) => colHidden.set(t, new Set(c)));
+      if (state.hiddenRefs) state.hiddenRefs.forEach(k => hiddenRefs.add(k));
+      update(false);
+      return;
     }
-    if (saved.hiddenRefs) saved.hiddenRefs.forEach(k => hiddenRefs.add(k));
-    update(false);
-  } else {
-    editor.value = DEFAULT_DBML;
-    masterSrc = editor.value;
-    update(false);
   }
+
+  // Migrate old single-key save → slot
+  _migrateOldSave();
+
+  // Always show slot picker on load
+  openSlotModal();
 })();

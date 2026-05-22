@@ -84,6 +84,8 @@ function decodeState(encoded) {
 
 function saveToLocalStorage() {
   try {
+    if (typeof saveCurrentSlot === 'function') { saveCurrentSlot(); return; }
+    // Fallback (before slots.js loads)
     const colHiddenObj = {};
     colHidden.forEach((cols, tbl) => { if (cols.size > 0) colHiddenObj[tbl] = [...cols]; });
     localStorage.setItem(LS_KEY, JSON.stringify({
