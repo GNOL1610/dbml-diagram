@@ -95,6 +95,39 @@ async function _requestPermission() {
   } catch { return false; }
 }
 
+// If stored handle points to a parent folder (not diagram-saves),
+// auto-create diagram-saves/ inside it, migrate slot files, update handle.
+async function _ensureSavesSubdir() {
+  if (!_folderHandle) return;
+  if (_folderHandle.name === SAVES_SUBDIR) return;  // already correct
+  try {
+    const parent = _folderHandle;
+    const saves  = await parent.getDirectoryHandle(SAVES_SUBDIR, { create: true });
+
+    // Migrate: copy slot files and slots.json from parent → saves
+    const toMigrate = [];
+    for await (const [name, entry] of parent.entries()) {
+      if (entry.kind === 'file' && (name === 'slots.json' || name.endsWith('_diagram.json') || name.startsWith('slot_'))) {
+        toMigrate.push(name);
+      }
+    }
+    for (const name of toMigrate) {
+      try {
+        const srcFh = await parent.getFileHandle(name);
+        const text  = await (await srcFh.getFile()).text();
+        const dstFh = await saves.getFileHandle(name, { create: true });
+        const w     = await dstFh.createWritable();
+        await w.write(text);
+        await w.close();
+        // Remove from parent after successful copy
+        await parent.removeEntry(name);
+      } catch {}
+    }
+
+    await _storeHandle(saves);
+  } catch {}
+}
+
 /* ── File read/write ── */
 async function _readJSON(filename) {
   try {
@@ -432,6 +465,7 @@ async function _refreshModal() {
   if (perm === 'none') {
     _renderNoFolder(body);
   } else if (perm === 'granted') {
+    await _ensureSavesSubdir();   // migrate to diagram-saves/ if needed
     await _renderReady(false, body);
   } else {
     _renderNeedPerm(body);
@@ -474,6 +508,7 @@ function _renderNeedPerm(body) {
   document.getElementById('slot-reconnect').addEventListener('click', async () => {
     const ok = await _requestPermission();
     if (ok) {
+      await _ensureSavesSubdir();   // migrate to diagram-saves/ if needed
       await _renderReady(false);
     } else {
       showToast('Không được cấp quyền.');
