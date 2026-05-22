@@ -1,0 +1,1585 @@
+// ═══════════════════════════════════════════════════════════════════════
+// GHN Data Warehouse — Schema & Relationships (v2, tổng hợp từ MCP)
+// Engine : Trino / Iceberg + dw-ghn
+// Cập nhật: 2026-05-22
+//
+// Cách dùng: Paste vào diagram tool tại project/Datamapping/dbml-diagram.html
+// Ref notation: ref: > schema.table.col  (3-part, cross-schema)
+// database: attribute → dùng để phân cấp UI Library Panel
+// ═══════════════════════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════
+// LAYER 0 — LOCATION HIERARCHY (ref tables)
+// Hệ thống địa chính VN: Tỉnh → Quận → Phường
+// ══════════════════════════════════════════════════
+
+Table dwh.dim_location_province [note: 'ref', database: 'iceberg'] {
+  province_id       bigint  [pk, note: 'Mã tỉnh/thành (PK)']
+  province_name     varchar [note: 'Tên tỉnh/thành']
+  province_status   bigint
+  region_id         bigint
+  region_name       varchar
+  region_shortname  varchar [note: 'HNO / HCM / DNB …']
+  region_fullname   varchar
+  region_code_hrw   varchar
+}
+
+Table dwh.dim_location_district [note: 'ref', database: 'iceberg'] {
+  district_id      bigint  [pk, note: 'Mã quận/huyện (PK)']
+  district_code    varchar [note: 'Mã số quận/huyện (string)']
+  district_name    varchar
+  district_type    varchar
+  district_status  bigint
+  province_id      bigint  [ref: > dwh.dim_location_province.province_id, note: 'FK → tỉnh']
+  province_name    varchar
+  region_id        bigint
+  region_name      varchar
+  region_fullname  varchar
+  region_shortname varchar
+  region_code_hrw  varchar
+}
+
+Table dwh.dim_location_ward [note: 'ref', database: 'iceberg'] {
+  ward_id          varchar [pk, note: 'Mã phường/xã (PK, = ward_code)']
+  ward_name        varchar
+  ward_status      bigint
+  district_id      bigint  [ref: > dwh.dim_location_district.district_id, note: 'FK → quận']
+  district_code    varchar
+  district_name    varchar
+  district_type    varchar
+  province_id      bigint  [ref: > dwh.dim_location_province.province_id, note: 'FK → tỉnh']
+  province_name    varchar
+  region_id        bigint
+  region_name      varchar
+  region_fullname  varchar
+  region_shortname varchar
+  region_code_hrw  varchar
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 1 — CORE DIMENSIONS (dwh)
+// ══════════════════════════════════════════════════
+
+Table dwh.dim_client [note: 'dim', database: 'iceberg'] {
+  client_id   bigint  [pk, note: 'Mã khách hàng / shop (PK)']
+  client_name varchar [note: 'Tên shop']
+  client_type varchar [note: 'KA / non-KA / B2B …']
+}
+
+Table dwh.dim_warehouse [note: 'dim', database: 'iceberg'] {
+  warehouse_id        bigint  [pk, note: 'Mã kho/bưu cục (PK)']
+  department_id       bigint  [ref: > dwh.dim_department._id, note: 'FK → chi nhánh/đơn vị']
+  warehouse_name      varchar
+  warehouse_address   varchar
+  warehouse_type      varchar [note: 'BC / KTC / TTS / HUB …']
+  is_enabled          boolean
+  status_hrw          bigint  [note: 'Trạng thái HRW']
+  is_virtual          varchar
+  ward_code           varchar [note: 'Mã phường (không join trực tiếp)']
+  ward_name           varchar
+  district_id         bigint  [ref: > dwh.dim_location_district.district_id, note: 'FK → quận']
+  district_name       varchar
+  province_id         bigint  [ref: > dwh.dim_location_province.province_id, note: 'FK → tỉnh']
+  province_name       varchar
+  region_shortname    varchar
+  region_fullname     varchar
+  team_name           varchar
+  section_name        varchar
+  department_name     varchar
+  gdv_id              bigint  [note: 'FK → dim_employee (giám đốc vùng)']
+  gdv_name            varchar
+  pgdv_id             bigint  [note: 'FK → dim_employee (phó GĐV)']
+  pgdv_name           varchar
+  area_manager_id     bigint  [note: 'FK → dim_employee']
+  area_manager_name   varchar
+  station_leader_id   bigint  [note: 'FK → dim_employee']
+  station_leader_name varchar
+  owner_location_id   varchar
+  latitude            double
+  longitude           double
+  created_time        timestamp
+  last_updated_time   timestamp
+  hrw_updated_at      timestamp
+}
+
+Table dwh.dim_employee [note: 'dim', database: 'iceberg'] {
+  employee_id      bigint  [pk, note: 'Mã nhân viên (PK)']
+  hara_id          decimal [note: 'Mã Hara (ID quốc tế)']
+  employee_name    varchar
+  jobtitle_id      bigint
+  jobtitle_name    varchar [note: 'Chức danh EN']
+  jobtitle_name_vn varchar [note: 'Chức danh VN']
+  status           varchar [note: 'active / inactive']
+  type             double  [note: 'Loại nhân viên']
+  unit_id          double  [note: 'FK → đơn vị']
+  warehouse_id     bigint  [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho làm việc']
+  group_id         bigint
+  group_name       varchar
+  team_id          bigint
+  team_name        varchar
+  section_id       bigint
+  section_name     varchar
+  department_id    bigint
+  department_name  varchar
+  division_id      bigint
+  division_name    varchar
+  bu_id            bigint
+  bu_name          varchar
+  start_working_date timestamp
+  termination_date   timestamp
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 2 — CORE FACT: SHIPPING ORDER
+// Bảng trung tâm — mọi domain đều join về đây qua order_code
+// Schema: dw-ghn / data_internalv2
+// Tên thực: data_shippingorder_now (có prefix data_)
+// ══════════════════════════════════════════════════
+
+Table data_internalv2.data_shippingorder_now [note: 'fact', database: 'dw-ghn'] {
+  order_code           varchar [pk, note: 'Mã đơn hàng (PK)']
+  client_id            bigint  [ref: > dwh.dim_client.client_id, note: 'FK → shop']
+  shop_id              bigint  [note: 'Mã cửa hàng (sub-entity của client)']
+
+  // ── Địa chỉ gửi
+  from_ward_code       varchar [ref: > dwh.dim_location_ward.ward_id, note: 'FK → phường gửi']
+  from_district_id     bigint  [ref: > dwh.dim_location_district.district_id, note: 'FK → quận gửi']
+  from_name            varchar
+  from_phone           varchar [note: 'PII.Sensitive']
+  from_address         varchar
+
+  // ── Địa chỉ nhận
+  to_ward_code         varchar [ref: > dwh.dim_location_ward.ward_id, note: 'FK → phường nhận']
+  to_district_id       bigint  [ref: > dwh.dim_location_district.district_id, note: 'FK → quận nhận']
+  to_phone             varchar [note: 'PII.Sensitive']
+
+  // ── Kho vận
+  pick_warehouse_id    bigint  [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho lấy hàng']
+  deliver_warehouse_id bigint  [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao hàng']
+  current_warehouse_id bigint  [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho hiện tại']
+  return_warehouse_id  bigint  [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho trả hàng']
+
+  // ── Nhân sự
+  pick_user            bigint  [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper lấy hàng']
+  deliver_user         bigint  [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper giao hàng']
+  return_user          bigint  [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper trả hàng']
+
+  // ── Trạng thái & loại
+  status               varchar [note: 'ready_to_pick / picking / delivering / delivered / return …']
+  action               varchar [note: 'Hành động gần nhất']
+  type_order           varchar [note: 'freight / bulky / normal']
+  type_order_code      varchar
+  tag                  varchar [note: 'array — contains "bulky" nếu hàng cồng kềnh']
+  is_b2b               boolean
+
+  // ── Kích thước & tài chính
+  weight               bigint  [note: 'gram']
+  converted_weight     bigint  [note: 'gram quy đổi']
+  length               bigint
+  width                bigint
+  height               bigint
+  cod_amount           bigint  [note: 'VNĐ']
+  cod_collect_date     timestamp
+  cod_failed_amount    bigint  [note: 'COD thất bại']
+  cod_failed_collect_date timestamp
+  cod_amount_bk        bigint
+  insurance_value      bigint
+  pick_station_id      bigint
+
+  // ── Nội dung & dịch vụ
+  content              varchar
+  note                 varchar
+  created_source       varchar
+  data                 varchar [note: 'JSON extra']
+  items                varchar [note: 'JSON danh sách sản phẩm']
+  deliver_shift        varchar [note: 'Ca giao hàng']
+  extra_service        varchar [note: 'JSON dịch vụ mở rộng']
+
+  // ── Mốc thời gian
+  created_date         timestamp
+  end_pick_time        timestamp
+  first_delivered_time timestamp
+  end_delivery_time    timestamp
+
+  service_type_id      bigint
+  service_id           bigint
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 2b — SHIPPING ORDER SNAPSHOTS (clean)
+// 3 bảng phân vùng theo các mốc thời gian khác nhau
+// Schema: iceberg / clean
+// Cùng cấu trúc cột (~120 cột), khác partition field
+// NOTE: chỉ document các cột thường dùng — xem MCP để full schema
+// ══════════════════════════════════════════════════
+
+Table clean.online_core_corev2_shippingorder_endpicktime [note: 'snapshot', database: 'iceberg'] {
+  dt                   varchar   [note: 'PARTITION — end_pick_time (yyyy-MM-dd)']
+  _id                  varchar   [note: 'Internal document ID']
+  order_code           varchar   [pk, ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng (snapshot theo end_pick_time)']
+  client_id            bigint    [ref: > dwh.dim_client.client_id, note: 'FK → shop']
+  shop_id              bigint
+
+  // ── Địa chỉ gửi & nhận
+  from_ward_code       varchar   [ref: > dwh.dim_location_ward.ward_id, note: 'FK → phường gửi']
+  from_district_id     bigint    [ref: > dwh.dim_location_district.district_id, note: 'FK → quận gửi']
+  to_ward_code         varchar   [ref: > dwh.dim_location_ward.ward_id, note: 'FK → phường nhận']
+  to_district_id       bigint    [ref: > dwh.dim_location_district.district_id, note: 'FK → quận nhận']
+  return_ward_code     varchar   [note: 'Mã phường trả hàng']
+  return_district_id   bigint    [note: 'Mã quận trả hàng']
+
+  // ── Kho vận
+  pick_warehouse_id    bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho lấy hàng']
+  deliver_warehouse_id bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao hàng']
+  current_warehouse_id bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho hiện tại']
+  return_warehouse_id  bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho trả hàng']
+  next_warehouse_id    bigint    [note: 'Kho tiếp theo']
+
+  // ── Nhân sự
+  pick_user            bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper lấy']
+  deliver_user         bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper giao']
+  return_user          bigint    [note: 'FK → shipper trả']
+  lost_user            bigint    [note: 'FK → nhân viên ghi nhận mất']
+
+  // ── Trạng thái
+  status               varchar
+  action               varchar
+  type_order           varchar   [note: 'freight / bulky / normal']
+  tag                  varchar   [note: 'ARRAY<STRING> — bulky flag']
+  is_b2b               boolean
+  is_partial_return    boolean
+  is_cod_collected     boolean
+  sort_code            varchar
+
+  // ── Kích thước & COD
+  weight               bigint    [note: 'gram']
+  converted_weight     bigint
+  length               bigint
+  width                bigint
+  height               bigint
+  cod_amount           varchar   [note: 'STRING (khác shippingorder_now là BIGINT)']
+  payment_type_id      bigint
+  client_order_code    varchar
+
+  // ── Đếm lần thực hiện
+  num_pick             bigint
+  num_deliver          bigint
+  num_return           bigint
+
+  // ── Mốc thời gian
+  created_date         timestamp
+  end_pick_time        timestamp [note: 'PARTITION key']
+  end_delivery_time    timestamp
+  first_picked_time    timestamp
+  return_time          timestamp
+  s2r_time             timestamp
+  end_return_time      timestamp
+  end_success_time     timestamp
+  lost_time            timestamp
+
+  service_type_id      bigint
+  service_id           bigint
+  pick_station_id      bigint
+}
+
+Table clean.online_core_corev2_shippingorder_enddeliverytime [note: 'snapshot', database: 'iceberg'] {
+  dt                   varchar   [note: 'PARTITION — end_delivery_time (yyyy-MM-dd)']
+  _id                  varchar   [note: 'Internal document ID']
+  order_code           varchar   [pk, ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng (snapshot theo end_delivery_time)']
+  client_id            bigint    [ref: > dwh.dim_client.client_id, note: 'FK → shop']
+  shop_id              bigint
+
+  // ── Địa chỉ gửi & nhận
+  from_ward_code       varchar   [ref: > dwh.dim_location_ward.ward_id, note: 'FK → phường gửi']
+  from_district_id     bigint    [ref: > dwh.dim_location_district.district_id, note: 'FK → quận gửi']
+  to_ward_code         varchar   [ref: > dwh.dim_location_ward.ward_id, note: 'FK → phường nhận']
+  to_district_id       bigint    [ref: > dwh.dim_location_district.district_id, note: 'FK → quận nhận']
+  return_ward_code     varchar   [note: 'Mã phường trả hàng']
+  return_district_id   bigint    [note: 'Mã quận trả hàng']
+
+  // ── Kho vận
+  pick_warehouse_id    bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho lấy hàng']
+  deliver_warehouse_id bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao hàng']
+  current_warehouse_id bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho hiện tại']
+  return_warehouse_id  bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho trả hàng']
+  next_warehouse_id    bigint    [note: 'Kho tiếp theo']
+
+  // ── Nhân sự
+  pick_user            bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper lấy']
+  deliver_user         bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper giao']
+  return_user          bigint    [note: 'FK → shipper trả']
+  lost_user            bigint    [note: 'FK → nhân viên ghi nhận mất']
+
+  // ── Trạng thái
+  status               varchar
+  action               varchar
+  type_order           varchar   [note: 'freight / bulky / normal']
+  tag                  varchar   [note: 'ARRAY<STRING> — bulky flag']
+  is_b2b               boolean
+  is_partial_return    boolean
+  is_cod_collected     boolean
+  sort_code            varchar
+
+  // ── Kích thước & COD
+  weight               bigint    [note: 'gram']
+  converted_weight     bigint
+  length               bigint
+  width                bigint
+  height               bigint
+  cod_amount           varchar   [note: 'STRING']
+  payment_type_id      bigint
+  client_order_code    varchar
+
+  // ── Đếm lần thực hiện
+  num_pick             bigint
+  num_deliver          bigint
+  num_return           bigint
+
+  // ── Mốc thời gian
+  created_date         timestamp
+  end_pick_time        timestamp
+  end_delivery_time    timestamp [note: 'PARTITION key']
+  first_picked_time    timestamp
+  return_time          timestamp
+  s2r_time             timestamp
+  end_return_time      timestamp
+  end_success_time     timestamp
+  lost_time            timestamp
+
+  service_type_id      bigint
+  service_id           bigint
+  pick_station_id      bigint
+}
+
+Table clean.online_core_corev2_shippingorder_createddate [note: 'snapshot', database: 'iceberg'] {
+  dt                   varchar   [note: 'PARTITION — created_date (yyyy-MM-dd)']
+  _id                  varchar   [note: 'Internal document ID']
+  order_code           varchar   [pk, ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng (snapshot theo created_date)']
+  client_id            bigint    [ref: > dwh.dim_client.client_id, note: 'FK → shop']
+  shop_id              bigint
+
+  // ── Địa chỉ gửi & nhận
+  from_ward_code       varchar   [ref: > dwh.dim_location_ward.ward_id, note: 'FK → phường gửi']
+  from_district_id     bigint    [ref: > dwh.dim_location_district.district_id, note: 'FK → quận gửi']
+  to_ward_code         varchar   [ref: > dwh.dim_location_ward.ward_id, note: 'FK → phường nhận']
+  to_district_id       bigint    [ref: > dwh.dim_location_district.district_id, note: 'FK → quận nhận']
+  return_ward_code     varchar   [note: 'Mã phường trả hàng']
+  return_district_id   bigint    [note: 'Mã quận trả hàng']
+
+  // ── Kho vận
+  pick_warehouse_id    bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho lấy hàng']
+  deliver_warehouse_id bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao hàng']
+  current_warehouse_id bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho hiện tại']
+  return_warehouse_id  bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho trả hàng']
+  next_warehouse_id    bigint    [note: 'Kho tiếp theo']
+
+  // ── Nhân sự
+  pick_user            bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper lấy']
+  deliver_user         bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper giao']
+  return_user          bigint    [note: 'FK → shipper trả']
+  lost_user            bigint    [note: 'FK → nhân viên ghi nhận mất']
+
+  // ── Trạng thái
+  status               varchar
+  action               varchar
+  type_order           varchar   [note: 'freight / bulky / normal']
+  tag                  varchar   [note: 'ARRAY<STRING> — bulky flag']
+  is_b2b               boolean
+  is_partial_return    boolean
+  is_cod_collected     boolean
+  sort_code            varchar
+
+  // ── Kích thước & COD
+  weight               bigint    [note: 'gram']
+  converted_weight     bigint
+  length               bigint
+  width                bigint
+  height               bigint
+  cod_amount           varchar   [note: 'STRING']
+  payment_type_id      bigint
+  client_order_code    varchar
+
+  // ── Đếm lần thực hiện
+  num_pick             bigint
+  num_deliver          bigint
+  num_return           bigint
+
+  // ── Mốc thời gian
+  created_date         timestamp [note: 'PARTITION key']
+  end_pick_time        timestamp
+  end_delivery_time    timestamp
+  first_picked_time    timestamp
+  return_time          timestamp
+  s2r_time             timestamp
+  end_return_time      timestamp
+  end_success_time     timestamp
+  lost_time            timestamp
+
+  service_type_id      bigint
+  service_id           bigint
+  pick_station_id      bigint
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 3 — INSIDE OPERATIONS
+// Theo dõi hành trình vật lý của kiện hàng
+// ══════════════════════════════════════════════════
+
+Table clean.inside_package_history [note: 'fact', database: 'iceberg'] {
+  dt               varchar   [note: 'PARTITION — ngày action_time (yyyy-MM-dd)']
+  order_code       varchar   [ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng (N hành động / đơn)']
+  package_code     varchar   [note: 'Mã kiện hàng (1 order có thể có nhiều package)']
+
+  // ── Hành động
+  action_category  varchar   [note: 'PICKING / STORING / TRANSPORTING / DELIVERING / RETURNING']
+  action_name      varchar   [note: 'PACKED_TO_SORTING / RECEIVED_AT_LASTMILE …']
+  action_time      timestamp
+
+  // ── Kho
+  warehouse_id     varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho (varchar — cast khi join bigint)']
+  from_warehouse_id int      [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho xuất phát']
+  to_warehouse_id  int       [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho đích']
+
+  // ── Chuyến / Phiên
+  trip_code        varchar   [note: 'Mã chuyến vận chuyển']
+  trip_partner     varchar   [note: 'Đối tác outsource (nếu có)']
+  stop_code        varchar
+  session_code     varchar
+
+  // ── Nhân sự
+  user_id          varchar   [ref: > dwh.dim_employee.employee_id, note: 'FK → nhân viên (varchar — cast khi join)']
+  user_name        varchar
+}
+
+Table clean.parsed_transportation_history [note: 'fact', database: 'iceberg'] {
+  dt               date      [note: 'PARTITION — ngày chuyến xe (DATE)']
+  trip_code        varchar   [pk, ref: > fa.logistics_trip_detail.code, note: 'FK → chuyến xe (join với fa reporting)']
+  hub              varchar   [note: 'Mã kho/hub thực hiện chuyến']
+  warehouse_id     int       [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho (INT — cast khi join bigint)']
+  scheduler_code   varchar   [ref: > dwh.dim_employee.employee_id, note: 'FK → người lên lịch (cast)']
+  scheduler_name   varchar
+
+  // ── Xe & Tài xế (STRUCT)
+  truck            varchar   [note: 'STRUCT{truck_id, truck_plate, truck_type, truck_capacity_weight}']
+  driver           varchar   [note: 'STRUCT{driver_id, driver_name, driver_phone} — PII.Sensitive']
+  sub_driver       varchar   [note: 'ARRAY<STRUCT> — tài xế phụ']
+
+  // ── Thông tin chuyến
+  trip_status      varchar
+  partner_id       bigint
+  note_force_end   varchar
+  return_stop      varchar   [note: 'Mã điểm dừng trả hàng']
+
+  // ── Danh sách hàng (ARRAY<STRUCT>)
+  items_picked     varchar   [note: 'ARRAY<STRUCT{order_code, weight, …}> — hàng nhận lên xe']
+  items_dropped    varchar   [note: 'ARRAY<STRUCT{order_code, weight, …}> — hàng trả tại điểm']
+  forward_stops    varchar   [note: 'ARRAY — các điểm dừng tiếp theo']
+  remain_items     varchar   [note: 'ARRAY — hàng còn lại trên xe']
+
+  // ── Điểm dừng
+  stoppoint_code   varchar   [note: 'Mã điểm dừng']
+  stoppoint_name   varchar   [note: 'Tên điểm dừng']
+  stoppoint_address varchar
+  stoppoint_status varchar
+  sort_number      int       [note: 'Thứ tự dừng dự kiến']
+  type             varchar   [note: 'Loại điểm dừng']
+  type_node        varchar
+
+  // ── Ước tính
+  est_time_in_at   timestamp [note: 'Dự kiến nhập kho']
+  est_time_out_at  timestamp [note: 'Dự kiến xuất kho']
+  est_distance     double    [note: 'Khoảng cách ước tính (km)']
+  est_duration     double    [note: 'Thời gian ước tính (phút)']
+  est_day          int
+
+  // ── Thời gian thực tế tại điểm
+  check_in_at      timestamp [note: 'Thực tế nhập kho']
+  check_in_note    varchar
+  check_out_at     timestamp [note: 'Thực tế xuất kho']
+  check_out_note   varchar
+  process_time     varchar   [note: 'JSON — thời gian xử lý từng bước tại điểm']
+
+  // ── Metadata
+  created_at_date  timestamp
+  updated_at_date  timestamp
+  disable          varchar
+}
+
+// dtr_insidev3.dtr_insidev3_item — theo dõi pickup/dropoff kiện hàng tại điểm dừng
+// (tên cũ trong DBML: dtr_insidev3.transportation_history — bảng đó không tồn tại trên MCP)
+Table dtr_insidev3.dtr_insidev3_item [note: 'fact', database: 'dw-ghn'] {
+  _id                  varchar   [pk, note: 'Mã giao dịch (PK)']
+  transportation_code  varchar   [note: 'Mã vận chuyển (→ parsed_transportation_history.trip_code)']
+  package_code         varchar   [note: 'Mã kiện hàng']
+  org_code             varchar   [note: 'Mã đơn vị tổ chức']
+  status               varchar
+
+  // ── Lấy hàng
+  pickup_at_stop       varchar   [note: 'Mã điểm dừng lấy hàng']
+  pickup_by_id         varchar   [ref: > dwh.dim_employee.employee_id, note: 'FK → người lấy (string — cast)']
+  pickup_by_name       varchar
+  pickup_time          timestamp
+  pickup_session_code  varchar
+
+  // ── Giao hàng
+  to_location_id       varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho đích (string — cast)']
+  dropoff_at_stop      varchar   [note: 'Mã điểm dừng giao hàng']
+  dropoff_by_id        varchar   [ref: > dwh.dim_employee.employee_id, note: 'FK → người giao (string — cast)']
+  dropoff_by_name      varchar
+  dropoff_time         timestamp
+  dropoff_session_code varchar
+
+  // ── Metadata
+  partner              varchar   [note: 'Đối tác vận chuyển']
+  scanned_seal_code    varchar
+  expected_arrival_time timestamp
+  created_time         timestamp
+  last_updated_time    timestamp
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 4 — LAST MILE DELIVERY
+// Giao hàng đến tay người nhận
+// Tên thực trên Trino (iceberg.raw):
+//   lastmile_lastmile_trip_v2_production_trip
+//   lastmile_lastmile_trip_v2_production_tripitem
+// ══════════════════════════════════════════════════
+
+Table raw.lastmile_lastmile_trip_v2_production_trip [note: 'fact', database: 'iceberg'] {
+  _id                  varchar [pk, note: 'Mã bản ghi (PK)']
+  trip_code            varchar [note: 'Mã chuyến giao (business key)']
+  status               varchar [note: 'Trạng thái chuyến']
+  hub_id               varchar [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → bưu cục (varchar — cast khi join bigint)']
+  driver_id            varchar [note: 'Mã tài xế (PII.Sensitive)']
+  driver_name          varchar [note: 'PII.Sensitive']
+  driver_phone         varchar [note: 'PII.Sensitive']
+  truck_plate_number   varchar
+  created_by_id        varchar [ref: > dwh.dim_employee.employee_id, note: 'FK → nhân viên tạo chuyến (string)']
+  created_by_name      varchar
+  created_by_phone     varchar [note: 'PII.Sensitive']
+  is_collected         boolean [note: 'Đã thu hộ hàng']
+  is_ready             boolean
+  display_counter      bigint
+  service_partner      varchar [note: 'Tên đối tác giao (outsource)']
+  partner_service_code varchar
+  partner_trip_code    varchar
+  partner_is_cancel    boolean
+  date                 timestamp
+  start_time           timestamp
+  end_time             timestamp
+  created_time         timestamp
+  last_updated_time    timestamp
+  createddate_partition date    [note: 'PARTITION — ngày tạo chuyến']
+  dt                   varchar
+}
+
+// NOTE: simplified — chỉ document các cột thường dùng. Bảng thực có 70 cột, xem MCP để full schema.
+Table raw.lastmile_lastmile_trip_v2_production_tripitem [note: 'fact', database: 'iceberg'] {
+  _id              varchar   [pk, note: 'Mã bản ghi (PK)']
+  trip_code        varchar   [ref: > raw.lastmile_lastmile_trip_v2_production_trip.trip_code, note: 'FK → chuyến giao (N đơn / chuyến)']
+  order_code       varchar   [ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  in_trip_index    bigint    [note: 'Thứ tự đơn trong chuyến']
+  type             varchar
+
+  // ── Kết quả
+  is_succeeded     boolean   [note: 'Giao thành công']
+  is_collected     boolean   [note: 'Đã thu COD']
+  collect_amount   varchar   [note: 'Số tiền thu được (STRING)']
+  is_scanned       boolean
+  is_return        boolean
+  is_cancel        boolean
+  is_partial_return boolean
+  is_partial_delivery boolean
+  fail_code        varchar
+  fail_note        varchar
+
+  // ── Địa chỉ người nhận
+  contact_ward_code     varchar [ref: > dwh.dim_location_ward.ward_id, note: 'FK → phường người nhận']
+  contact_district_code varchar [note: 'FK → district_code (string key)']
+  contact_district_name varchar
+  contact_address       varchar [note: 'PII.NonSensitive']
+  contact_contact_phone varchar [note: 'PII.Sensitive']
+  contact_lat           double
+  contact_lng           double
+
+  // ── Thời gian & người cập nhật
+  date              timestamp
+  created_time      timestamp
+  last_updated_time timestamp
+  updated_time      timestamp
+  update_user_id    varchar
+  driver_id         varchar
+  hub_id            varchar
+  createddate_partition date [note: 'PARTITION']
+  dt                varchar
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 5 — FINANCE / LOGISTICS REPORTING
+// Chi phí & hiệu suất chuyến xe tuyến đường dài
+// Schema: ghn-reporting / fa
+// ⚠️ CHỈ TỒN TẠI TRÊN BIGQUERY (ghn-bigquery.ghn-reporting.fa)
+//    Không có trên Trino — dùng service ghn-bigquery khi query
+// ══════════════════════════════════════════════════
+
+Table fa.logistics_route [note: 'ref — BigQuery only', database: 'ghn-reporting'] {
+  route_code             varchar [pk, note: 'Mã tuyến vận chuyển (PK)']
+  route_type             varchar [note: 'Loại tuyến']
+  lane_type              varchar [note: 'Loại làn']
+  first_warehouse_id     bigint  [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho đầu tuyến']
+  first_warehouse_name   varchar
+  first_warehouse_type   varchar
+  first_province_name    varchar
+  first_region_shortname varchar
+  last_warehouse_id      bigint  [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho cuối tuyến']
+  last_warehouse_name    varchar
+  last_warehouse_type    varchar
+  last_province_name     varchar
+  last_region_shortname  varchar
+  count_stoppoints       bigint  [note: 'Số điểm dừng trong tuyến']
+  route_warehouse_type   varchar
+  scheduler_name         varchar
+  first_trip             date
+  last_trip              date
+  is_active              boolean
+}
+
+Table fa.logistics_trip_detail [note: 'fact — BigQuery only', database: 'ghn-reporting'] {
+  code             varchar   [pk, note: 'Mã chuyến xe (PK)']
+  hub              varchar   [note: 'Mã kho trung tâm']
+  trip_status      varchar
+  truck_id         varchar   [note: 'FK → xe tải (string)']
+  number_plate     varchar
+  truck_capacity_weight varchar
+  partner_code     varchar   [note: 'Mã đối tác vận chuyển']
+  partner_type     varchar
+  scheduler_code   varchar   [ref: > dwh.dim_employee.employee_id, note: 'FK → người lên lịch (cast)']
+  scheduler_name   varchar
+  sort_number      bigint    [note: 'Thứ tự điểm dừng dự kiến']
+  actual_sort_number bigint  [note: 'Thứ tự điểm dừng thực tế']
+  stoppoint_code   varchar
+  stoppoint_status varchar
+  stoppoint_name   varchar
+  warehouse_id     bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho điểm dừng']
+  province_name    varchar
+  region_shortname varchar
+  warehouse_type   varchar
+
+  // ── Thời gian
+  est_time_in_at   timestamp [note: 'Dự kiến nhập kho']
+  est_time_out_at  timestamp [note: 'Dự kiến xuất kho']
+  check_in_at      timestamp [note: 'Thực tế nhập kho']
+  check_out_at     timestamp [note: 'Thực tế xuất kho']
+  created_at_date  timestamp
+  load_date        date      [note: 'PARTITION']
+
+  // ── Khối lượng
+  total_weight_converted       double [note: 'kg quy đổi']
+  total_weight_converted_bulky double
+  total_weight_converted_small double
+  volume_ordercode             bigint
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 6 — FREIGHT (vận tải hàng B2B / nặng)
+// Schema: dw-ghn / data_logistics_truck
+// (tên cũ trong DBML v1: freight — đã sửa)
+// ══════════════════════════════════════════════════
+
+Table data_logistics_truck.data_truck [note: 'dim', database: 'dw-ghn'] {
+  _id             varchar [pk, note: 'Mã xe (PK string)']
+  id              bigint  [note: 'Mã xe (BIGINT — dùng khi join với bảng khác)']
+  id_number       varchar [note: 'Biển số xe (PII.Sensitive)']
+  name            varchar [note: 'Tên xe']
+  partner_id      bigint  [note: 'FK → đối tác vận chuyển']
+  hub             varchar [note: 'Mã kho chứa xe']
+  payload         bigint  [note: 'Trọng tải (kg)']
+  dimension       varchar [note: 'Kích thước D×R×C']
+  model           varchar
+  type            bigint
+  status          bigint
+  is_actived      boolean
+  is_deleted      boolean
+  current_location varchar
+  managed_by_hubs varchar [note: 'array — danh sách kho quản lý xe']
+  cam_id          varchar
+  cam_name        varchar
+  has_cam         boolean
+  created_at      decimal [note: 'Epoch timestamp tạo']
+  updated_at      decimal [note: 'Epoch timestamp cập nhật']
+  updated_at_date timestamp
+}
+
+Table data_logistics_truck.data_trip_fulltrip [note: 'fact', database: 'dw-ghn'] {
+  _id              varchar [pk, note: 'Mã chuyến (PK string)']
+  code             varchar [note: 'Mã chuyến ngắn gọn (business key)']
+  hub              varchar [note: 'Mã kho trung tâm']
+  type             bigint  [note: 'Loại chuyến']
+  status           varchar
+  truck            varchar [ref: > data_logistics_truck.data_truck._id, note: 'FK → xe tải']
+  driver           varchar [note: 'Mã tài xế chính (string)']
+  sub_driver       varchar [note: 'Mã tài xế phụ (string)']
+  customer_id      varchar [ref: > dwh.dim_client.client_id, note: 'FK → khách hàng (cast)']
+  customer_name    varchar [note: 'PII.Sensitive']
+  partner_id       varchar [note: 'FK → đối tác vận chuyển']
+  current_location varchar
+  current_hub      varchar
+  total_number_booking bigint [note: 'Tổng số đơn hàng trên chuyến']
+  total_weight     double  [note: 'kg']
+  routers          varchar [note: 'Danh sách tuyến đường']
+  router_path      varchar
+  partner_router   varchar
+  scheduler_code   varchar
+  scheduler_name   varchar
+  note_force_end   varchar
+  process_time     varchar [note: 'JSON thời gian xử lý']
+  is_block         boolean
+  is_full          boolean
+  is_back          boolean
+  is_deleted       boolean
+  created_by       bigint
+  finished_by      bigint
+  current_cubic    varchar
+  created_at       decimal [note: 'Epoch timestamp']
+  updated_at       decimal [note: 'Epoch timestamp']
+  finished_at      decimal [note: 'Epoch timestamp']
+  created_at_date  timestamp
+  updated_at_date  timestamp
+  finished_at_date timestamp
+}
+
+Table data_logistics_truck.data_booking [note: 'fact', database: 'dw-ghn'] {
+  _id             varchar [pk, note: 'Mã đặt chỗ (PK)']
+  code            varchar [note: 'Mã đặt chỗ ngắn gọn']
+  order_code      varchar [ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  order_id        bigint  [note: 'Mã đơn hàng (int)']
+  type            varchar [note: 'Loại đơn']
+  status          varchar
+  hub             varchar [note: 'Mã kho trung tâm']
+  trip            varchar [ref: > data_logistics_truck.data_trip_fulltrip.code, note: 'FK → chuyến xe']
+  from            varchar [note: 'Điểm xuất phát']
+  to              varchar [note: 'Điểm đến']
+  weight          double  [note: 'kg']
+  cubic           varchar [note: 'm³']
+  number_of_items bigint
+  is_deleted      boolean
+  action_at_status varchar
+  next_action     varchar
+  external_code   varchar [note: 'Mã đơn hàng bên thứ ba']
+  created_at      decimal [note: 'Epoch timestamp']
+  updated_at      decimal [note: 'Epoch timestamp']
+  created_at_date timestamp
+  updated_at_date timestamp
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 7 — SORTATION (phân loại / sorting hub)
+// Schema: iceberg / sorting_core
+// Ghi chú: schema tự tạo nội bộ, chất lượng dữ liệu
+//   thấp hơn các schema chính thức
+// ══════════════════════════════════════════════════
+
+Table sorting_core.area_warehouse [note: 'ref', database: 'iceberg'] {
+  sort_warehouse         varchar [pk, note: 'Mã kho sắp xếp (PK)']
+  province               varchar [note: 'Tên tỉnh thành']
+  region                 varchar [note: 'Mã vùng: HNO / DSH / HCM …']
+  area                   varchar [note: 'Miền: Bắc / Trung / Nam']
+  code                   varchar [note: 'Mã kho hàng (nhiều NULL)']
+  transit_warehouse      varchar [note: 'Mã kho trung chuyển']
+  transit_warehouse_name varchar [note: 'Tên kho trung chuyển']
+  warehouse_id           varchar [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho (varchar — cast khi join bigint)']
+}
+
+
+// ══════════════════════════════════════════════════
+// CROSS-TABLE REFS (standalone)
+// Quan hệ bổ sung — không khai báo inline được vì
+// cột đã có ref khác, hoặc là quan hệ nhiều-chiều
+// ══════════════════════════════════════════════════
+
+// ── A. order_code: fact tables → 3 snapshot tables ──────────────────────
+Ref: clean.inside_package_history.order_code > clean.online_core_corev2_shippingorder_endpicktime.order_code
+Ref: clean.inside_package_history.order_code > clean.online_core_corev2_shippingorder_enddeliverytime.order_code
+Ref: clean.inside_package_history.order_code > clean.online_core_corev2_shippingorder_createddate.order_code
+
+Ref: raw.lastmile_lastmile_trip_v2_production_tripitem.order_code > clean.online_core_corev2_shippingorder_endpicktime.order_code
+Ref: raw.lastmile_lastmile_trip_v2_production_tripitem.order_code > clean.online_core_corev2_shippingorder_enddeliverytime.order_code
+Ref: raw.lastmile_lastmile_trip_v2_production_tripitem.order_code > clean.online_core_corev2_shippingorder_createddate.order_code
+
+Ref: data_logistics_truck.data_booking.order_code > clean.online_core_corev2_shippingorder_endpicktime.order_code
+Ref: data_logistics_truck.data_booking.order_code > clean.online_core_corev2_shippingorder_enddeliverytime.order_code
+Ref: data_logistics_truck.data_booking.order_code > clean.online_core_corev2_shippingorder_createddate.order_code
+
+// ── B. trip_code: nối các bảng vận chuyển với nhau ──────────────────────
+Ref: clean.inside_package_history.trip_code > clean.parsed_transportation_history.trip_code
+Ref: clean.inside_package_history.trip_code > fa.logistics_trip_detail.code
+
+Ref: dtr_insidev3.dtr_insidev3_item.transportation_code > clean.parsed_transportation_history.trip_code
+Ref: dtr_insidev3.dtr_insidev3_item.transportation_code > fa.logistics_trip_detail.code
+
+// ── C. freight trip ↔ fa reporting (cùng trip entity ở 2 system) ────────
+Ref: data_logistics_truck.data_trip_fulltrip.code > fa.logistics_trip_detail.code
+
+
+// ══════════════════════════════════════════════════
+// LAYER 1b — ADDITIONAL DIMENSIONS (dwh)
+// dim_department: cấu trúc đơn vị tổ chức (self-ref)
+// dim_employee_history: SCD2 lịch sử nhân viên
+// ══════════════════════════════════════════════════
+
+Table dwh.dim_department [note: 'dim', database: 'iceberg'] {
+  _id               bigint    [pk, note: 'Mã chi nhánh (PK)']
+  hrw_id            bigint    [note: 'Mã HRW']
+  warehouse_id      bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho']
+  code              varchar   [note: 'Mã đơn vị']
+  name              varchar   [note: 'Tên đơn vị']
+  unit_id           bigint
+  unit_name         varchar
+  parent_id         bigint    [note: 'FK → dim_department._id (self-ref, đơn vị cha)']
+  status            bigint
+  is_temp           boolean
+  type              bigint    [note: 'Loại đơn vị']
+  street            varchar   [note: 'PII.NonSensitive']
+  city              varchar   [note: 'PII.NonSensitive']
+  district          varchar   [note: 'PII.NonSensitive']
+  ward              varchar   [note: 'PII.NonSensitive']
+  ward_code         varchar   [note: 'PII.NonSensitive']
+  updated_date      timestamp
+  group_            varchar   [note: 'Tên nhóm (group_ vì "group" là reserved)']
+  team              varchar
+  section           varchar
+  sub_department    varchar
+  department        varchar
+  division          varchar
+  company           varchar
+  region_shortname  varchar
+  region_order      varchar
+}
+
+Table dwh.dim_employee_history [note: 'snapshot', database: 'iceberg'] {
+  wr_id                 varchar   [pk, note: 'Mã bản ghi (PK)']
+  employee_id           bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → nhân viên']
+  hara_id               decimal
+  employee_name         varchar
+  start_working_date    timestamp
+  termination_date      timestamp
+  jobtitle_id           bigint
+  jobtitle_name         varchar
+  unit_id               double
+  hrw_unit_id           bigint
+  status                bigint
+  warehouse_id          bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho']
+  group_name            varchar
+  team_name             varchar
+  section_id            bigint
+  section_name          varchar
+  department_id         bigint
+  department_name       varchar
+  division_id           bigint
+  division_name         varchar
+  bu_name               varchar
+  region_shortname      varchar
+  from_date             date      [note: 'Ngày bắt đầu hiệu lực (SCD2)']
+  to_date               date      [note: 'Ngày kết thúc hiệu lực (SCD2)']
+  position              varchar
+  working_record_status double
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 2c — SHIPPING ORDER REALTIME (clean)
+// Trạng thái đơn hàng realtime — nhẹ hơn snapshot
+// Không có partition ngày sự kiện, dt = ngày xử lý
+// ══════════════════════════════════════════════════
+
+Table clean.shipping_order_processing_realtime [note: 'fact', database: 'iceberg'] {
+  dt                             varchar   [note: 'PARTITION — ngày xử lý (VARCHAR yyyy-MM-dd)']
+  order_code                     varchar   [pk, ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  client_id                      bigint    [ref: > dwh.dim_client.client_id, note: 'FK → shop']
+  from_name                      varchar
+  from_phone                     varchar   [note: 'PII.Sensitive']
+  from_address                   varchar   [note: 'PII.NonSensitive']
+  from_district_id               bigint    [ref: > dwh.dim_location_district.district_id, note: 'FK → quận gửi']
+  to_address                     varchar   [note: 'PII.NonSensitive']
+  to_district_id                 bigint    [ref: > dwh.dim_location_district.district_id, note: 'FK → quận nhận']
+  weight                         bigint    [note: 'gram']
+  converted_weight               bigint
+  length                         bigint
+  width                          bigint
+  height                         bigint
+  status                         varchar
+  action                         varchar
+  type_order                     varchar
+  tag                            varchar
+  current_warehouse_id           bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho hiện tại']
+  current_transport_warehouse_id bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho đang vận chuyển']
+  next_warehouse_id              bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho tiếp theo']
+  pick_warehouse_id              bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho lấy hàng']
+  deliver_warehouse_id           bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao hàng']
+  created_date                   timestamp
+  updated_date                   timestamp
+  end_pick_time                  timestamp
+  end_delivery_time              timestamp
+  end_return_time                timestamp
+  end_success_time               timestamp
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 3c — ORDER STATUS HISTORY (raw)
+// Audit log mỗi lần thay đổi status đơn hàng
+// Dùng để tính leadtime từng bước, detect anomaly
+// ══════════════════════════════════════════════════
+
+Table raw.online_core_corev2_so_history_status [note: 'audit', database: 'iceberg'] {
+  _id               varchar   [pk, note: 'Mã bản ghi (PK)']
+  dt                varchar   [note: 'PARTITION — ngày updated_date (VARCHAR yyyy-MM-dd)']
+  order_code        varchar   [ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  old_status        varchar   [note: 'Trạng thái trước khi thay đổi']
+  new_status        varchar   [note: 'Trạng thái sau khi thay đổi']
+  updated_date      timestamp
+  updated_employee  bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → nhân viên thực hiện']
+  updated_client    bigint    [ref: > dwh.dim_client.client_id, note: 'FK → khách hàng (nếu self-update)']
+  updated_source    varchar   [note: 'Nguồn thay đổi (app / system / api)']
+  updated_ip        varchar
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 7b — TRUCK SHIFTS NORTH (sorting_core)
+// Ca xe tải miền Bắc — 1 dòng = 1 chuyến xe/ca
+// Đây là bảng sorting_core, chất lượng thấp hơn clean
+// ngay_theo_ca: VARCHAR 'YYYY-MM-DD' — dùng SUBSTR khi group by tháng
+// ══════════════════════════════════════════════════
+
+Table sorting_core.truck_north [note: 'fact', database: 'iceberg'] {
+  id_lo_trinh       varchar   [pk, note: 'Mã lộ trình (PK tổng hợp)']
+  ngay_theo_ca      varchar   [note: 'Ngày theo ca (VARCHAR YYYY-MM-DD) — không dùng date_format']
+  dt                varchar   [note: 'PARTITION']
+  ca_lv             varchar   [note: 'Ca làm việc (sáng/chiều/tối — không nhất quán giữa KTC)']
+  gio_hieu_chinh    varchar   [note: 'Giờ hiệu chỉnh ca — dùng để align ca thực tế']
+  trip_code         varchar   [note: 'Mã chuyến xe']
+  code              varchar
+  sort_number       int       [note: 'Thứ tự điểm dừng']
+  stoppoint_name    varchar   [note: 'Tên điểm dừng']
+  phanloai          varchar   [note: 'Phân loại: Nội tỉnh / Nội vùng / Liên vùng']
+  trong_tai         varchar   [note: 'Trọng tải xe (varchar)']
+  warehouse_id      int       [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho (INT — cast khi join bigint)']
+  so_order          bigint    [note: 'Số đơn hàng trên chuyến']
+  tong_weight       double    [note: 'Tổng trọng lượng (gram)']
+  so_package        bigint    [note: 'Số kiện']
+  scheduler_code    varchar   [ref: > dwh.dim_employee.employee_id, note: 'FK → người lập lịch (cast)']
+  scheduler_name    varchar
+  lane_type         varchar   [note: 'Loại tuyến: Nội tỉnh / Nội vùng / Liên vùng']
+  first_area        varchar   [note: 'Khu vực xuất phát']
+  pv_lienvung       varchar
+  loai_lv           varchar   [note: 'Loại làm việc']
+  lo_trinh          varchar   [note: 'Lộ trình mô tả dạng text']
+  next_stop         bigint    [note: 'Mã điểm dừng tiếp theo']
+  next_stop_name    varchar
+  next_area         varchar
+  loaihang          varchar   [note: 'Loại hàng: CK / nhỏ / hỗn hợp']
+  next_province     varchar   [note: 'PII.NonSensitive']
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 8 — OE CORE (outbound express reporting)
+// Schema: iceberg / oe_core
+// Bảng pre-aggregated của OE team, dùng trong Superset
+// ⚠️ Cột có tên tiếng Việt (dấu cách) — dùng dấu ngoặc kép khi query
+// ══════════════════════════════════════════════════
+
+Table oe_core.dim_calendar [note: 'ref', database: 'iceberg'] {
+  cal_date          date      [pk, note: 'Ngày (PK)']
+  cal_year          bigint
+  cal_quarter       bigint
+  cal_month         bigint
+  cal_day           bigint
+  day_of_week_num   bigint    [note: '1=Mon … 7=Sun']
+  is_sunday         bigint    [note: '1 nếu Chủ nhật']
+  holiday_name      varchar   [note: 'Tên ngày lễ/nghỉ (NULL nếu ngày thường)']
+  is_holiday        bigint    [note: '1 nếu ngày lễ']
+  day_type          varchar   [note: 'workday / sunday / holiday']
+  is_working_day    bigint    [note: '1 nếu ngày làm việc']
+}
+
+Table oe_core.v3_daily_delivery_backlog [note: 'agg', database: 'iceberg'] {
+  report_date       timestamp [note: 'Ngày báo cáo (TIMESTAMP)']
+  vung_giao         varchar   [note: 'Vùng giao — tên cột gốc: "vùng giao"']
+  tinh_giao         varchar   [note: 'Tỉnh giao — tên cột gốc: "tỉnh giao"']
+  buu_cuc_giao      varchar   [note: 'Bưu cục giao — tên cột gốc: "bưu cục giao"']
+  loai_khach_hang   varchar   [note: 'Loại khách hàng — tên cột gốc: "loại khách hàng"']
+  so_ngay_ton       varchar   [note: 'Số ngày tồn backlog — tên cột gốc: "số ngày tồn"']
+  nhom_lan_giao     varchar   [note: 'Nhóm lần giao — tên cột gốc: "nhóm lần giao"']
+  kho_hien_tai      varchar   [note: 'Kho hiện tại — tên cột gốc: "kho hiện tại"']
+  so_don            bigint    [note: 'Số đơn backlog — tên cột gốc: "số đơn"']
+}
+
+Table oe_core.fact_order_journey_leadtime [note: 'fact', database: 'iceberg'] {
+  dt                      varchar   [note: 'PARTITION (STRING)']
+  order_code              varchar   [pk, ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  shop_id                 bigint
+  client_id               bigint    [ref: > dwh.dim_client.client_id, note: 'FK → shop']
+  client_type             varchar
+  from_district_id        bigint    [ref: > dwh.dim_location_district.district_id, note: 'FK → quận gửi']
+  from_district_name      varchar
+  to_ward_code            varchar   [ref: > dwh.dim_location_ward.ward_id, note: 'FK → phường nhận']
+  to_ward_name            varchar
+  to_district_id          bigint    [ref: > dwh.dim_location_district.district_id, note: 'FK → quận nhận']
+  to_district_name        varchar
+  pick_warehouse_id       bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho lấy']
+  pick_warehouse_name     varchar
+  loai_kho_lay            varchar
+  deliver_warehouse_id    bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao']
+  deliver_warehouse_name  varchar
+  loai_kho_giao           varchar
+  current_warehouse_id    bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho hiện tại']
+  current_warehouse_name  varchar
+  return_warehouse_id     bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho trả']
+  return_warehouse_name   varchar
+  weight                  bigint
+  converted_weight        bigint
+  length                  bigint
+  width                   bigint
+  height                  bigint
+  tag                     varchar   [note: 'ARRAY — bulky flag']
+  status                  varchar
+  created_date            timestamp
+  pickup_time             timestamp
+  end_pick_time           timestamp
+  end_delivery_time       timestamp
+  order_date              timestamp
+  finish_date             timestamp
+
+  // ── Mốc thời gian tại kho lấy
+  thoi_gian_nhap_bc_lay   timestamp [note: 'Thực tế nhập kho lấy']
+  thoi_gian_xuat_bc_lay   timestamp [note: 'Thực tế xuất kho lấy']
+
+  // ── Leadtime phân tách (giờ)
+  mang_tong_hop_ktc       varchar   [note: 'ARRAY — tổng hợp qua từng KTC']
+  mang_leadtime_ktc_rieng varchar   [note: 'ARRAY — leadtime riêng từng KTC']
+  tong_leadtime_ktc       double    [note: 'Tổng giờ qua KTC']
+
+  // ── Mốc thời gian tại kho giao
+  thoi_gian_nhap_bc_giao  timestamp [note: 'Thực tế nhập kho giao']
+  thoi_gian_xuat_bc_giao  timestamp [note: 'Thực tế xuất kho giao']
+
+  leadtime_ltc            double    [note: 'Leadtime lấy hàng (giờ)']
+  leadtime_gtc            double    [note: 'Leadtime giao hàng (giờ)']
+  leadtime_tong           double    [note: 'Leadtime tổng end-to-end (giờ)']
+  leadtime_trung_chuyen   double    [note: 'Leadtime trung chuyển qua KTC (giờ)']
+}
+
+
+// ══════════════════════════════════════════════════
+// CROSS-TABLE REFS — BỔ SUNG (các bảng mới)
+// ══════════════════════════════════════════════════
+
+// ── D. dim_department self-ref ────────────────────
+Ref: dwh.dim_department.parent_id > dwh.dim_department._id
+
+// ── E. truck_north.trip_code → các bảng chuyến xe ──
+Ref: sorting_core.truck_north.trip_code > clean.parsed_transportation_history.trip_code
+Ref: sorting_core.truck_north.trip_code > fa.logistics_trip_detail.code
+
+// ── F. so_history_status → snapshot tables ──────────
+Ref: raw.online_core_corev2_so_history_status.order_code > clean.online_core_corev2_shippingorder_endpicktime.order_code
+Ref: raw.online_core_corev2_so_history_status.order_code > clean.online_core_corev2_shippingorder_enddeliverytime.order_code
+Ref: raw.online_core_corev2_so_history_status.order_code > clean.online_core_corev2_shippingorder_createddate.order_code
+
+
+// ══════════════════════════════════════════════════
+// LAYER 2d — CDC CHANGELOG (raw)
+// Kafka CDC changelog của bảng shippingorder
+// ⚠️ ĐÂY KHÔNG PHẢI bảng đơn hàng bình thường
+// Mỗi row = 1 thay đổi trạng thái từ Kafka topic
+// Identifier chính: new_order_code (không phải order_code)
+// dt: STRING partition (yyyy-MM-dd)
+// ══════════════════════════════════════════════════
+
+Table raw.online_core_corev2_shippingorder [note: 'audit', database: 'iceberg'] {
+  dt                    varchar   [note: 'PARTITION (STRING yyyy-MM-dd) — dùng dt >= date_format(...)']
+  new_order_code        varchar   [pk, note: 'Mã đơn hàng MỚI — identifier chính (không dùng order_code)']
+  old_order_code        varchar   [note: 'Mã đơn hàng CŨ (trước thay đổi)']
+
+  // ── Kafka metadata
+  meta_koffset          bigint    [note: 'Kafka offset']
+  meta_ktopic           varchar   [note: 'Kafka topic']
+  meta_kpart            bigint    [note: 'Kafka partition']
+  meta_ktime            timestamp [note: 'Kafka event time']
+
+  // ── Status change (các cặp old/new phổ biến)
+  old_status            varchar   [note: 'Trạng thái trước khi thay đổi']
+  new_status            varchar   [note: 'Trạng thái sau khi thay đổi']
+  old_action            varchar
+  new_action            varchar
+  old_current_warehouse_id bigint [note: 'Kho hiện tại trước thay đổi']
+  new_current_warehouse_id bigint [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho hiện tại mới']
+  old_next_warehouse_id bigint
+  new_next_warehouse_id bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho tiếp theo mới']
+  new_pick_user         bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper lấy hàng mới']
+  new_deliver_user      bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper giao hàng mới']
+  new_client_id         bigint    [ref: > dwh.dim_client.client_id, note: 'FK → shop']
+  new_pick_warehouse_id bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho lấy hàng mới']
+  new_deliver_warehouse_id bigint [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao hàng mới']
+  new_created_date      timestamp
+  new_end_pick_time     timestamp
+  new_end_delivery_time timestamp
+
+  // NOTE: bảng có ~160 cột (old/new cho mỗi field). Xem MCP để full schema.
+  // Query: dùng WHERE new_order_code = '...' và filter dt để prune partition
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 3b — RAW PACKAGE TRACKING (raw)
+// Nguồn gốc route_code / sort_code của kiện hàng
+// Mỗi row = 1 kiện hàng tại 1 thời điểm
+// Dùng để: tìm sort_code, theo dõi pack/unpack, check forward
+// sort_code = REGEXP_EXTRACT(route_code, '([A-Z]+)', 1)
+// ══════════════════════════════════════════════════
+
+Table raw.pickup_delivery__dtr_insidev3__package [note: 'fact', database: 'iceberg'] {
+  _id                   varchar   [pk, note: 'Mã kiện hàng (PK)']
+  dt                    varchar   [note: 'PARTITION (VARCHAR) — dùng date_format khi filter']
+  code                  varchar   [note: 'Mã package (→ inside_package_history.package_code)']
+  route_code            varchar   [note: 'Nguồn sort_code — REGEXP_EXTRACT(route_code,"([A-Z]+)",1)']
+  gxt_route_code        varchar   [note: 'Route code GXT (giao hàng xuyên tỉnh)']
+  sort_status           varchar   [note: 'Trạng thái phân loại']
+  is_forward            boolean   [note: 'Chuyến xuôi (true) hay chuyến ngược (false)']
+
+  // ── Vị trí
+  from_location_id      varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho xuất phát (varchar cast)']
+  to_location_id        varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho đích (varchar cast)']
+  current_location_id   varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho hiện tại (varchar cast)']
+
+  // ── Thời gian
+  pack_time             timestamp [note: 'Thời gian đóng kiện']
+  unpack_time           timestamp [note: 'Thời gian dở kiện']
+  arrival_time          timestamp [note: 'Thời gian đến điểm']
+
+  // NOTE: bảng có 44 cột. Xem MCP để full schema.
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 3d — DEV TRANSPORTATION HISTORY (dev)
+// Giống clean.parsed_transportation_history nhưng:
+//   - Lịch sử dài hơn: từ 8/4/2021 (~5 năm)
+//   - Không có cột remain_items
+//   - Dùng khi cần trend YoY, T1/T2/2026 trở về trước
+// dt: DATE partition
+// ══════════════════════════════════════════════════
+
+Table dev.parsed_transportation_history [note: 'fact', database: 'iceberg'] {
+  dt               date      [note: 'PARTITION (DATE) — từ 8/4/2021 đến nay (~5 năm)']
+  trip_code        varchar   [pk, ref: > fa.logistics_trip_detail.code, note: 'FK → chuyến xe']
+  hub              varchar   [note: 'Mã kho/hub thực hiện chuyến']
+  warehouse_id     int       [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho (INT — cast khi join bigint)']
+  scheduler_code   varchar   [ref: > dwh.dim_employee.employee_id, note: 'FK → người lên lịch (cast)']
+  scheduler_name   varchar
+
+  // ── Xe & Tài xế (STRUCT)
+  truck            varchar   [note: 'STRUCT row(id, id_number, cubic, capacity_weight, partner_id)']
+  driver           varchar   [note: 'STRUCT row(id, fullname, phone, partner_id) — PII.Sensitive']
+  sub_driver       varchar   [note: 'ARRAY<STRUCT> — tài xế phụ']
+
+  // ── Thông tin chuyến
+  trip_status      varchar   [note: 'finished / cancel / ontrip']
+  partner_id       bigint
+  note_force_end   varchar
+  return_stop      varchar   [note: '"0"=xuôi / "-1"=ngược — không documented chính thức']
+
+  // ── Danh sách hàng (ARRAY)
+  items_picked     varchar   [note: 'ARRAY — hàng nhận lên xe']
+  items_dropped    varchar   [note: 'ARRAY — hàng trả tại điểm']
+  forward_stops    varchar   [note: 'ARRAY — các điểm dừng tiếp theo']
+  // NOTE: KHÔNG CÓ remain_items (chỉ có trong clean)
+
+  // ── Điểm dừng
+  sort_number      int       [note: 'Thứ tự điểm dừng dự kiến']
+  stoppoint_code   varchar
+  stoppoint_name   varchar
+  stoppoint_address varchar
+  stoppoint_status varchar   [note: 'new / finished / processing']
+  type             varchar
+  type_node        varchar   [note: 'sorting / delivery / pickup / delivery_and_pickup']
+  disable          varchar   [note: '"true" = stoppoint bị vô hiệu hóa']
+
+  // ── Ước tính
+  est_time_in_at   timestamp
+  est_time_out_at  timestamp
+  est_distance     double
+  est_duration     double
+  est_day          int
+
+  // ── Thời gian thực tế
+  check_in_at      timestamp
+  check_in_note    varchar
+  check_out_at     timestamp
+  check_out_note   varchar
+  process_time     varchar   [note: 'JSON MongoDB — {request_at, processing_at, finished_at}']
+  created_at_date  timestamp
+  updated_at_date  timestamp
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 4b — TRUCK STOP METRICS (raw)
+// Đo thời gian chờ, dỡ hàng tại từng điểm dừng
+// 1 row = 1 stoppoint trong 1 chuyến xe
+// Metric chính: wait_before_unload_seconds
+// ══════════════════════════════════════════════════
+
+Table raw.ws_report__report_dashboard__truck_stop_metrics [note: 'fact', database: 'iceberg'] {
+  _id                              varchar   [pk, note: 'Mã bản ghi (PK)']
+  dt                               date      [note: 'PARTITION (DATE)']
+  trip_code                        varchar   [ref: > clean.parsed_transportation_history.trip_code, note: 'FK → chuyến xe']
+  stop_code                        varchar   [note: 'Mã điểm dừng']
+  location_id                      varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho (varchar cast)']
+  vehicle_number                   varchar   [note: 'Biển số xe']
+
+  // ── Thời gian chờ & dỡ hàng
+  wait_before_unload_seconds       bigint    [note: 'Thời gian chờ trước khi dỡ hàng (giây) — metric chính']
+  drop_off_session_duration_seconds bigint   [note: 'Thời gian dỡ hàng trong ca (giây)']
+  checkin_time                     timestamp [note: 'Thời gian xe vào điểm']
+  checkout_time                    timestamp [note: 'Thời gian xe rời điểm']
+
+  // ── Khối lượng
+  weight                           bigint    [note: 'Trọng lượng hàng dỡ (gram)']
+
+  // NOTE: bảng có 25 cột. Xem MCP để full schema.
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 4c — LAST MILE BACKLOG (raw)
+// Snapshot backlog giao hàng last mile
+// 1 row = 1 nhóm đơn tồn theo aging + client + location
+// order_codes: ARRAY — dùng CARDINALITY() để đếm
+// ══════════════════════════════════════════════════
+
+Table raw.lastmile_backlog_report_dashboard_backlog [note: 'snapshot', database: 'iceberg'] {
+  _id           varchar   [pk, note: 'Mã bản ghi (PK)']
+  aging         varchar   [note: 'Nhóm tuổi tồn: 1-3 ngày / 4-7 ngày / >7 ngày …']
+  backlog_type  varchar   [note: 'Loại backlog: giao / trả / lưu kho']
+  client_id     varchar   [ref: > dwh.dim_client.client_id, note: 'FK → shop (varchar cast)']
+  location_id   varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → bưu cục (varchar cast)']
+  order_amount  int       [note: 'Số lượng đơn trong nhóm']
+  order_codes   varchar   [note: 'ARRAY<STRING> — danh sách mã đơn (CARDINALITY để đếm)']
+  version       bigint    [note: 'Version snapshot']
+  // NOTE: không có partition dt
+}
+
+
+// ══════════════════════════════════════════════════
+// LAYER 7c — SORTING OPERATIONS (sorting_core)
+// Các bảng vận hành chi tiết tại kho trung chuyển
+// Schema tự tạo nội bộ — data quality thấp hơn clean/dwh
+// ══════════════════════════════════════════════════
+
+// GTC/LTC/TTC: tỷ lệ giao, lấy, trả trong ngày
+Table sorting_core.dsh_gtc_ltc_ttc [note: 'agg', database: 'iceberg'] {
+  loaddate              date      [note: 'Ngày tải dữ liệu']
+  warehouse_id          bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho']
+  buu_cuc               varchar   [note: 'Mã bưu cục']
+  tinh                  varchar   [note: 'Tỉnh/thành phố']
+  am                    varchar   [note: 'Mã khu vực AM']
+  client_type           varchar
+  clientcontactname     varchar
+  don_can_lay           bigint    [note: 'Số đơn cần lấy']
+  don_ltc               bigint    [note: 'Số đơn đã lấy thực tế']
+  tl_ltc                decimal   [note: 'Tỷ lệ lấy thực tế (%)']
+  list_order_code_ltc   varchar   [note: 'Danh sách mã đơn đã lấy (string)']
+  don_can_giao          bigint    [note: 'Số đơn cần giao']
+  don_gtc               bigint    [note: 'Số đơn đã giao thực tế']
+  tl_gtc                decimal   [note: 'Tỷ lệ giao thực tế (%)']
+  list_order_code_gtc   varchar
+  don_can_tra           bigint    [note: 'Số đơn cần trả']
+  don_ttc               bigint    [note: 'Số đơn đã trả thực tế']
+  tl_ttc                decimal   [note: 'Tỷ lệ trả thực tế (%)']
+  list_order_code_ttc   varchar
+}
+
+// qua_kho: leadtime & trạng thái hàng từ nhận → xuất kho
+Table sorting_core.qua_kho [note: 'fact', database: 'iceberg'] {
+  ngay_receive                  date      [note: 'Ngày nhận vào kho']
+  thang                         bigint
+  week                          bigint
+  order_code                    varchar   [pk, ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  order_code_clean              varchar
+  package_code_receive          varchar
+  package_code_export           varchar
+  ten_kho                       varchar   [note: 'Tên kho KTC xử lý']
+  pack_type                     varchar
+  extracted_receive             varchar   [note: 'Sort code nhận']
+  extracted_export              varchar   [note: 'Sort code xuất']
+  flow_type                     varchar
+  dieu_kien_nhom                varchar   [note: 'Nội tỉnh / Nội vùng / Liên vùng']
+  loai_sort                     varchar
+  thoi_diem_receive             varchar
+  thoi_diem_export              varchar
+  leadtime_receive_export_min   bigint    [note: 'Leadtime nhận→xuất (phút)']
+  status_at_export              varchar
+  deliver_warehouse_id          bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao']
+  deliver_province_name         varchar
+  deliver_area                  varchar
+  vung                          varchar   [note: 'Tên vùng — cột gốc: "vùng"']
+  region_shortname              varchar
+}
+
+// cho_ra: tracking kiện hàng từ nhập → xuất kho
+Table sorting_core.cho_ra [note: 'fact', database: 'iceberg'] {
+  package_code                  varchar   [pk, note: 'Mã kiện hàng (PK)']
+  order_code                    varchar   [ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  warehouse_id                  varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho nhập (varchar cast)']
+  transit_warehouse_name        varchar
+  route_code_text               varchar
+  tgian_nhap_kho                varchar   [note: 'Thời gian nhập kho (string)']
+  tgian_ra_kien                 varchar   [note: 'Thời gian xuất kiện (string)']
+  leadtime_rakien               decimal   [note: 'Leadtime nhập→xuất (giờ)']
+  khung_tgian_ra                varchar
+  ngay_nk                       date      [note: 'Ngày nhập kho']
+  thang                         bigint
+  tuan                          bigint
+  trip_code                     varchar   [ref: > clean.parsed_transportation_history.trip_code, note: 'FK → chuyến xe']
+  deliver_warehouse_id          bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao']
+  deliver_region_shortname      varchar
+  deliver_province_name         varchar
+  deliver_mien                  varchar   [note: 'Bắc / Trung / Nam']
+}
+
+// cho_dong: tracking thời gian đóng kiện tại KTC
+Table sorting_core.cho_dong [note: 'fact', database: 'iceberg'] {
+  thang                         bigint
+  week_of_year                  bigint
+  ngay_pack                     date      [note: 'Ngày đóng kiện']
+  user_type                     varchar
+  transit_warehouse_name        varchar
+  pack_type                     varchar
+  extracted_letter              varchar   [note: 'Chữ cái sort code']
+  package_code                  varchar
+  order_code                    varchar   [pk, ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  total_timechenhlech           double    [note: 'Tổng thời gian chênh lệch (giây)']
+  tgian_rakien                  varchar   [note: 'Thời gian đặt lên giá đỡ']
+  pack_time                     varchar   [note: 'Tổng thời gian đóng kiện (giây)']
+}
+
+// cho_xuat_new: xuất kho theo khung giờ
+Table sorting_core.cho_xuat_new [note: 'fact', database: 'iceberg'] {
+  ngay_xuat                     date      [note: 'Ngày xuất kho']
+  thang                         bigint
+  week                          bigint
+  order_code                    varchar   [pk, ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  package_code_receive          varchar
+  package_code_export           varchar
+  ten_kho                       varchar
+  pack_type                     varchar
+  extracted_receive             varchar
+  extracted_export              varchar
+  flow_type                     varchar
+  khung_gio_xuat                varchar   [note: 'Khung giờ xuất kho']
+  dieu_kien_nhom                varchar   [note: 'Nội tỉnh / Nội vùng / Liên vùng']
+  tong_time_diff_hour           double    [note: 'Tổng chênh lệch giờ']
+  before_export_time            varchar
+  export_time                   varchar
+  receive_source                varchar
+  status_at_export              varchar
+  deliver_warehouse_id          bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao']
+  deliver_province_name         varchar
+  deliver_area                  varchar
+  origin_province_name          varchar
+  origin_area                   varchar
+  vung                          varchar   [note: 'Tên vùng — cột gốc: "vùng"']
+  region_shortname              varchar
+}
+
+// ktc_north: sản lượng giao/lấy miền Bắc theo GDV & giờ
+Table sorting_core.ktc_north [note: 'agg', database: 'iceberg'] {
+  dt                            varchar   [note: 'Ngày thực hiện (VARCHAR)']
+  action_category               varchar   [note: 'Loại hành động: giao / lấy']
+  warehouse_type                varchar
+  warehouse_name                varchar
+  gdv_id                        bigint    [note: 'Mã giám đốc vùng (GDV)']
+  gdv_name                      varchar
+  count_order_code              bigint    [note: 'Số đơn thực hiện']
+  total_weight                  bigint    [note: 'Tổng trọng lượng (gram)']
+  loaihang                      varchar   [note: 'CK / nhỏ / hỗn hợp']
+  deliver_province              varchar
+  pick_province                 varchar
+  deliver_mien                  varchar   [note: 'Bắc / Trung / Nam']
+  pick_mien                     varchar
+  hour                          bigint    [note: 'Giờ thực hiện (0-23)']
+}
+
+// theo_doi_shipper: lịch sử lấy/giao của từng shipper
+Table sorting_core.theo_doi_shipper [note: 'fact', database: 'iceberg'] {
+  order_code                    varchar   [pk, ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  dt                            varchar   [note: 'Ngày (VARCHAR)']
+  loaihang                      varchar
+  pick_user                     bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper lấy hàng']
+  deliver_user                  bigint    [ref: > dwh.dim_employee.employee_id, note: 'FK → shipper giao hàng']
+  pick_warehouse_name           varchar
+  deliver_warehouse_name        varchar
+  created_date                  date
+  end_pick_time                 date
+  end_delivery_time             date
+  weight                        bigint    [note: 'gram']
+}
+
+// inventory_north: tồn kho miền Bắc theo khung giờ
+Table sorting_core.inventory_north [note: 'snapshot', database: 'iceberg'] {
+  selected_date                 date      [note: 'Ngày chọn dữ liệu']
+  khung_gio_do_du_lieu          varchar
+  dt_vn                         varchar
+  warehouse_id                  varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho (varchar cast)']
+  warehouse_name                varchar
+  khung_gio_ton                 varchar   [note: 'Khung giờ tồn kho']
+  tinh_toi                      varchar
+  loaihang                      varchar
+  kho_toi                       varchar
+  deliver_warehouse_id          bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao']
+  so_luong                      bigint    [note: 'Số lượng đơn tồn']
+  weight                        double    [note: 'Tổng trọng lượng (gram)']
+  phanvung                      varchar
+  order_code_list               varchar   [note: 'ARRAY — danh sách đơn tồn']
+}
+
+// inventory_north_detail: chi tiết từng đơn tồn kho miền Bắc
+Table sorting_core.inventory_north_detail [note: 'fact', database: 'iceberg'] {
+  selected_date                 date
+  khung_gio_do_du_lieu          varchar
+  order_code                    varchar   [pk, ref: > data_internalv2.data_shippingorder_now.order_code, note: 'FK → đơn hàng']
+  package_code                  varchar
+  package_type                  varchar
+  loaihang                      varchar
+  client_type                   varchar
+  status                        varchar
+  ngay_nhap                     varchar
+  warehouse_id                  varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho hiện tại (varchar cast)']
+  warehouse_name                varchar
+  khung_gio_ton                 varchar
+  warehouse_id_kho_nhan         varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho nhận (varchar cast)']
+  kho_nhan                      varchar
+  tinh_nhan                     varchar
+  id_kho_tra                    bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho trả']
+  kho_tra                       varchar
+  deliver_warehouse_id          bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho giao']
+  kho_giao                      varchar
+  tinh_giao                     varchar
+  pick_warehouse_id             bigint    [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho lấy']
+  kho_lay                       varchar
+  weight                        double    [note: 'gram']
+  thoi_gian_ton                 double    [note: 'Thời gian tồn kho (giờ)']
+  task_status                   varchar
+  ngay_ton                      varchar
+  nhom                          varchar
+}
+
+// receive_export_north: nhận/xuất hàng miền Bắc theo ca
+Table sorting_core.receive_export_north [note: 'fact', database: 'iceberg'] {
+  dt                            varchar   [note: 'PARTITION (VARCHAR)']
+  ngay_theo_ca                  varchar   [note: 'Ngày theo ca (VARCHAR YYYY-MM-DD) — dùng SUBSTR khi group by tháng']
+  action_category               varchar   [note: 'nhận / xuất']
+  action_time                   bigint    [note: 'Epoch timestamp']
+  action_time_ts                timestamp [note: 'Timestamp hành động']
+  warehouse_id                  varchar   [ref: > dwh.dim_warehouse.warehouse_id, note: 'FK → kho (varchar cast)']
+  warehouse_name                varchar
+  trip_code                     varchar   [ref: > clean.parsed_transportation_history.trip_code, note: 'FK → chuyến xe']
+  ft_province                   varchar
+  ca_lv                         varchar   [note: 'Ca làm việc']
+  phanloaivung                  varchar   [note: 'Nội tỉnh / Nội vùng / Liên vùng']
+  ktc                           varchar   [note: 'Mã KTC xử lý']
+  loaihang                      varchar
+  weight                        double    [note: 'gram']
+  soluong                       bigint    [note: 'Số lượng đơn']
+  ktc_lay                       varchar
+  tinh_lay                      varchar
+  mienlay                       varchar
+  ktc_giao                      varchar
+  tinh_giao                     varchar
+  miengiao                      varchar
+  order_code_list               varchar   [note: 'ARRAY — danh sách đơn']
+}
+
+// bcnhankienlong: tỷ lệ kiện nhận theo miền/tỉnh và leadtime bucket
+Table sorting_core.bcnhankienlong [note: 'agg', database: 'iceberg'] {
+  dt                                    date      [note: 'Ngày phân tích']
+  pick_mien                             varchar
+  deliver_mien                          varchar
+  mien_lay_mien_giao                    varchar   [note: 'Tổ hợp miền lấy-giao — cột gốc: "miền lấy - miền giao"']
+  pick_province_name                    varchar
+  deliver_province_name                 varchar
+  tinh_lay_tinh_giao                    varchar   [note: 'Tổ hợp tỉnh lấy-giao — cột gốc: "tỉnh lấy - tỉnh giao"']
+  leadtime_bucket                       varchar   [note: 'Khoảng thời gian giao dự kiến']
+  volume                                bigint    [note: 'Số lượng đơn']
+  ratio_dt_pick_mien_pct                decimal
+  ratio_dt_deliver_mien_pct             decimal
+  ratio_dt_pick_deliver_mien_pct        decimal
+  ratio_dt_pick_province_pct            decimal
+  ratio_dt_deliver_province_pct         decimal
+  ratio_dt_pick_deliver_province_pct    decimal
+}
+
+// leadtime_luong_tai_xe: lương theo năng suất chuyến xe tài xế
+Table sorting_core.leadtime_luong_tai_xe [note: 'fact', database: 'iceberg'] {
+  salary_date                   date      [note: 'Ngày tính lương — PII.Sensitive']
+  thang_salary_date             bigint
+  trip_code_goc                 varchar   [note: 'Mã chuyến gốc']
+  trip_code_khong_pr            varchar   [note: 'Mã chuyến không phụ phí']
+  employee_id                   varchar   [ref: > dwh.dim_employee.employee_id, note: 'FK → nhân viên (cast)']
+  employee_name                 varchar   [note: 'PII.Sensitive']
+  trip_productivity_salary      double    [note: 'Lương năng suất chuyến (VNĐ) — PII.Sensitive']
+  ma_tai_xe                     bigint
+  bks                           varchar   [note: 'Biển kiểm soát xe']
+  tai_trong                     bigint    [note: 'Tải trọng xe (kg)']
+  hub                           varchar   [note: 'Mã hub/KTC']
+  thang_lon_nhat                bigint
+  km                            double    [note: 'Khoảng cách chuyến (km)']
+  scheduler                     varchar
+  phan_vung                     varchar
+}
+
+
+// ══════════════════════════════════════════════════
+// CROSS-TABLE REFS — BỔ SUNG G (bảng mới Session 14)
+// ══════════════════════════════════════════════════
+
+// ── G1. package tracking → inside_package_history ────
+Ref: raw.pickup_delivery__dtr_insidev3__package.code > clean.inside_package_history.package_code
+
+// ── G2. dev.parsed_transportation_history ↔ clean ────
+Ref: dev.parsed_transportation_history.trip_code > fa.logistics_trip_detail.code
+Ref: sorting_core.truck_north.trip_code > dev.parsed_transportation_history.trip_code
+Ref: clean.inside_package_history.trip_code > dev.parsed_transportation_history.trip_code
+
+// ── G3. truck stop metrics → transportation ──────────
+Ref: raw.ws_report__report_dashboard__truck_stop_metrics.trip_code > clean.parsed_transportation_history.trip_code
+Ref: raw.ws_report__report_dashboard__truck_stop_metrics.trip_code > dev.parsed_transportation_history.trip_code
+
+// ── G4. CDC changelog → core fact ────────────────────
+Ref: raw.online_core_corev2_shippingorder.new_order_code > data_internalv2.data_shippingorder_now.order_code
+
+// ── G5. sorting_core order_code facts → shippingorder ─
+Ref: sorting_core.qua_kho.order_code > data_internalv2.data_shippingorder_now.order_code
+Ref: sorting_core.cho_ra.order_code > data_internalv2.data_shippingorder_now.order_code
+Ref: sorting_core.cho_dong.order_code > data_internalv2.data_shippingorder_now.order_code
+Ref: sorting_core.cho_xuat_new.order_code > data_internalv2.data_shippingorder_now.order_code
+Ref: sorting_core.theo_doi_shipper.order_code > data_internalv2.data_shippingorder_now.order_code
+Ref: sorting_core.inventory_north_detail.order_code > data_internalv2.data_shippingorder_now.order_code
+
+// ── G6. receive_export_north → transportation ─────────
+Ref: sorting_core.receive_export_north.trip_code > clean.parsed_transportation_history.trip_code
+
+// ── G7. cho_ra → transportation ──────────────────────
+Ref: sorting_core.cho_ra.trip_code > clean.parsed_transportation_history.trip_code
