@@ -289,16 +289,11 @@ function _resetCanvas() {
    SAVE / LOAD
 ══════════════════════════════════════════════ */
 async function saveCurrentSlot() {
-  // If File System Access API is supported but no folder chosen yet → ask user to pick one
+  // If File System Access API is supported but no folder configured yet → open setup modal
   if (SUPPORTED && !_folderHandle) {
-    try {
-      const h = await window.showDirectoryPicker({ mode: 'readwrite' });
-      await _storeHandle(h);
-    } catch (e) {
-      if (e.name === 'AbortError') return;  // user cancelled
-      showToast('Không thể chọn thư mục: ' + e.message);
-      return;
-    }
+    openSlotModal();   // user needs to pick HTML folder first
+    showToast('Vui lòng chọn thư mục chứa HTML để thiết lập nơi lưu.');
+    return;
   }
 
   const now = _nowISO();
@@ -447,8 +442,11 @@ function _renderNoFolder(body) {
   body.innerHTML = `
     <div class="slot-storage-box slot-storage-file">
       <div class="slot-storage-ttl">💾 Lưu ra file trên máy <span class="slot-badge-rec">Khuyên dùng</span></div>
-      <div class="slot-storage-desc">Dữ liệu lưu dưới dạng <code>slots.json</code> + <code>slot_*.json</code> trong thư mục bạn chọn.<br>Có thể tìm lại bằng File Explorer.</div>
-      <button class="btn primary slot-wide-btn" id="slot-pick-folder" style="margin-top:6px">📁 Chọn thư mục lưu…</button>
+      <div class="slot-storage-desc">
+        Trỏ vào <b>thư mục chứa file <code>dbml-diagram.html</code></b>.<br>
+        App tự tạo thư mục <code>diagram-saves/</code> bên trong — chỉ cần làm <b>một lần duy nhất</b>.
+      </div>
+      <button class="btn primary slot-wide-btn" id="slot-pick-folder" style="margin-top:8px">📁 Chọn thư mục chứa HTML…</button>
     </div>
     <div class="slot-sep">— hoặc —</div>
     <div class="slot-storage-box slot-storage-browser">
@@ -466,12 +464,12 @@ function _renderNeedPerm(body) {
     <div class="slot-reconnect-box">
       <div class="slot-reconnect-icon">📂</div>
       <div class="slot-reconnect-name">${esc(name)}</div>
-      <div class="slot-reconnect-hint">Phiên đã lưu của bạn nằm trong thư mục này trên máy tính.<br>
-        Để tìm: mở <b>File Explorer</b> → tìm thư mục tên <b>"${esc(name)}"</b> → thấy các file <code>slots.json</code>, <code>slot_*.json</code>.</div>
+      <div class="slot-reconnect-hint">Phiên đã lưu của bạn nằm trong thư mục <code>diagram-saves/</code> này.<br>
+        Để tìm: mở <b>File Explorer</b> → tìm thư mục tên <b>"${esc(name)}"</b> → mở → thấy các file <code>*_diagram.json</code>.</div>
       <button class="btn primary slot-wide-btn" id="slot-reconnect" style="margin-top:10px">🔓 Kết nối lại và xem phiên đã lưu</button>
     </div>
     <div class="slot-sep">— hoặc —</div>
-    <button class="btn slot-wide-btn" id="slot-pick-new">📁 Chọn thư mục khác</button>
+    <button class="btn slot-wide-btn" id="slot-pick-new">📁 Chọn lại thư mục HTML</button>
     <button class="btn slot-wide-btn" id="slot-new-nofolder2">+ Tạo phiên mới (lưu tạm trình duyệt)</button>`;
   document.getElementById('slot-reconnect').addEventListener('click', async () => {
     const ok = await _requestPermission();
@@ -496,7 +494,7 @@ async function _renderReady(fallbackLS, body) {
       <div class="slot-location-bar">
         <span>💾 File lưu tại thư mục:</span>
         <span class="slot-folder-tag" style="display:inline-flex;margin:0">📂 ${esc(folderName)}</span>
-        <span class="slot-location-hint">Tìm trong File Explorer bằng tên thư mục này</span>
+        <span class="slot-location-hint">Tìm trong File Explorer: thư mục HTML → diagram-saves → *_diagram.json</span>
       </div>`;
   } else if (fallbackLS) {
     html += `
@@ -557,13 +555,19 @@ async function _renderReady(fallbackLS, body) {
   if (chBtn) chBtn.addEventListener('click', _onPickFolder);
 }
 
+const SAVES_SUBDIR = 'diagram-saves';
+
 async function _onPickFolder() {
   try {
-    const h = await window.showDirectoryPicker({ mode: 'readwrite' });
-    await _storeHandle(h);
+    // User picks the folder where dbml-diagram.html lives
+    const parent = await window.showDirectoryPicker({ mode: 'readwrite' });
+    // Auto-create diagram-saves subfolder
+    const saves = await parent.getDirectoryHandle(SAVES_SUBDIR, { create: true });
+    await _storeHandle(saves);
+    showToast(`📂 Thư mục lưu: ${parent.name}/${SAVES_SUBDIR}`);
     await _renderReady(false);
   } catch (e) {
-    if (e.name !== 'AbortError') showToast('Không thể chọn thư mục: ' + e.message);
+    if (e.name !== 'AbortError') showToast('Không thể truy cập thư mục: ' + e.message);
   }
 }
 
